@@ -717,7 +717,8 @@
                                     Scan QR code di atas menggunakan E-Wallet atau M-Banking Anda.
                                 </div>
 
-                                <div style="text-align: left; margin-bottom: 15px;">
+                                <!-- FILE INPUT DIBUNGKUS WIDGET SUPAYA BISA DISIMPANKAN SAAT PENDING -->
+                                <div style="text-align: left; margin-bottom: 15px;" id="uploadProofBox">
                                     <label style="color: #00ffff; font-weight: bold; margin-bottom: 6px;">📸 Upload Bukti Transfer (Gambar)</label>
                                     <input type="file" id="buktiBayarFile" accept="image/*" style="padding: 8px;">
                                 </div>
@@ -1023,6 +1024,8 @@
                 }
 
                 let upgradeActionContainer = document.getElementById('upgradeActionContainer');
+                let uploadProofBox = document.getElementById('uploadProofBox');
+
                 if (isProOrAdmin) {
                     document.getElementById('accountStatusDisplay').innerText = isOwnerOrAdmin ? "OWNER / ADMIN (PRO PERMANENT) 🛡️" : "PRO MEMBER AKTIF 🚀";
                     document.getElementById('accountStatusDisplay').style.color = "#00ff66";
@@ -1035,13 +1038,21 @@
                     document.getElementById('proActiveSection').style.display = 'none';
 
                     if (currentUser.requestStatus === 'PENDING') {
-                        upgradeActionContainer.innerHTML = `<div style="background: rgba(255,204,0,0.1); border: 1px solid #ffcc00; color: #ffcc00; padding: 12px; border-radius: 8px; font-size: 11px; font-weight: bold; text-align: center;">⏳ STATUS REQUEST: PENDING<br><span style="font-size: 9px; color: #aaa; font-weight: normal;">Menunggu konfirmasi dari Admin</span></div>`;
+                        // SEMBUNYIKAN INPUT FILE SAAT PENDING AGAR TIDAK BISA DI-SPAM
+                        if (uploadProofBox) uploadProofBox.style.display = 'none';
+                        upgradeActionContainer.innerHTML = `
+                            <div style="background: rgba(255,204,0,0.1); border: 1px solid #ffcc00; color: #ffcc00; padding: 15px; border-radius: 8px; font-size: 12px; font-weight: bold; text-align: center; box-shadow: 0 0 15px rgba(255,204,0,0.15);">
+                                ⏳ STATUS REQUEST: PENDING<br>
+                                <span style="font-size: 10px; color: #aaa; font-weight: normal; display: block; margin-top: 5px;">Bukti pembayaran telah terkirim. Menunggu konfirmasi dari Admin.</span>
+                            </div>`;
                     } else if (currentUser.requestStatus === 'REJECTED') {
+                        if (uploadProofBox) uploadProofBox.style.display = 'block';
                         upgradeActionContainer.innerHTML = `
                             <div style="background: rgba(255,51,68,0.1); border: 1px solid #ff3344; color: #ff3344; padding: 10px; border-radius: 8px; font-size: 11px; font-weight: bold; text-align: center; margin-bottom: 10px;">❌ REQUEST DITOLAK / EXPIRED</div>
                             <button class="btn btn-stage" style="width: 100%; background: #123d20; color: #00ff66; border-color: #00ff66;" onclick="requestUpgradePro(event)">🚀 KIRIM ULANG KONFIRMASI</button>
                         `;
                     } else {
+                        if (uploadProofBox) uploadProofBox.style.display = 'block';
                         upgradeActionContainer.innerHTML = `<button class="btn btn-stage" style="width: 100%; background: #123d20; color: #00ff66; border-color: #00ff66;" onclick="requestUpgradePro(event)">🚀 KONFIRMASI SUDAH BAYAR</button>`;
                     }
                 }
@@ -1460,9 +1471,15 @@
 
         async function requestUpgradePro(event) {
             if (!currentUser.isLoggedIn) return showToast("Silakan login terlebih dahulu!", "warning");
+            if (currentUser.isPro) return showToast("Akun Anda sudah berstatus PRO!", "success");
+            
+            // BLOKIR JIKA STATUS MASIH PENDING
+            if (currentUser.requestStatus === 'PENDING') {
+                return showToast("Request Anda sedang diproses oleh Admin. Mohon tunggu konfirmasi!", "warning");
+            }
             
             let fileInput = document.getElementById('buktiBayarFile');
-            if (!fileInput.files || fileInput.files.length === 0) {
+            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
                 return showToast("PILIH / UPLOAD BUKTI TRANSFER TERLEBIH DAHULU!", "warning");
             }
 
@@ -1591,15 +1608,13 @@
             });
         }
 
-        // SYSTEM AUTO REFRESH DENGAN POLLING TIAP 5 DETIK
+        // AUTO POLLING DETEKSI PERUBAHAN STATUS PRO DARI ADMIN
         setInterval(async () => {
-            // 1. Auto refresh data Panel Admin saat tab Admin sedang dibuka
             let adminSection = document.getElementById('view-admin');
             if (adminSection && adminSection.classList.contains('active')) {
                 loadAdminData(true);
             }
 
-            // 2. Auto cek status akun user secara otomatis tanpa refresh halaman
             if (currentUser && currentUser.isLoggedIn && currentUser.pass && !currentUser.isPro) {
                 try {
                     let res = await fetch(API_URL, {
@@ -1631,9 +1646,7 @@
                             }
                         }
                     }
-                } catch (e) {
-                    // Penanganan error silent di latar belakang
-                }
+                } catch (e) {}
             }
         }, 5000);
     </script>
