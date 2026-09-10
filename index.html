@@ -782,7 +782,7 @@
         const API_URL = "https://script.google.com/macros/s/AKfycbwOaiVAEH2YC89nkqc8iLGpJHvueWHjRqm7KtVXIaqwpdNW4yvKc_5NqsvAwxNb-ICQ/exec";
         
         let currentUser = {
-            isLoggedIn: false, email: "", name: "", role: "user", isPro: false, requestStatus: "FREE", proPackage: null, paymentPending: false, expiredDate: ""
+            isLoggedIn: false, email: "", name: "", role: "user", isPro: false, requestStatus: "FREE", proPackage: null, paymentPending: false, expiredDate: "", pass: ""
         };
 
         function showToast(message, type = 'success') {
@@ -908,6 +908,7 @@
                         isPro: userData.isPro === true, 
                         requestStatus: userData.requestStatus || "FREE",
                         expiredDate: userData.expiredDate || "",
+                        pass: pass,
                         paketPro: null, 
                         paymentPending: false
                     };
@@ -970,7 +971,7 @@
         }
 
         function handleLogout() {
-            currentUser = { isLoggedIn: false, email: "", name: "", role: "user", isPro: false, requestStatus: "FREE", proPackage: null, paymentPending: false, expiredDate: "" };
+            currentUser = { isLoggedIn: false, email: "", name: "", role: "user", isPro: false, requestStatus: "FREE", proPackage: null, paymentPending: false, expiredDate: "", pass: "" };
             localStorage.removeItem('racebox_current_user');
             updateAuthUI();
             showToast("🚪 Berhasil Logout.", "success");
@@ -1502,9 +1503,11 @@
             if (btn) { btn.innerText = originalText; btn.disabled = false; }
         }
 
-        async function loadAdminData() {
+        async function loadAdminData(isSilent = false) {
             let container = document.getElementById('adminDataContainer');
-            container.innerHTML = "<div style='text-align:center; font-size:12px; color:#ffcc00; padding:10px;'>⏳ Menarik data antrean dari Server...</div>";
+            if (!isSilent || !container.children.length) {
+                container.innerHTML = "<div style='text-align:center; font-size:12px; color:#ffcc00; padding:10px;'>⏳ Menarik data antrean dari Server...</div>";
+            }
             
             try {
                 let res = await fetch(API_URL, {
@@ -1515,7 +1518,7 @@
                 let listData = result.data || [];
                 
                 if (listData && listData.length > 0) {
-                    container.innerHTML = "";
+                    let htmlContent = "";
                     listData.forEach(req => {
                         let proofVal = req.bukti_bayar || "";
                         let proofHTML = "";
@@ -1534,7 +1537,7 @@
                             proofHTML = `<div style="font-size: 10px; color: #ff3344; margin-top: 4px;">Note: ${proofVal || 'Tidak ada foto'}</div>`;
                         }
 
-                        container.innerHTML += `
+                        htmlContent += `
                             <div class="setting-card" style="flex-direction: column; align-items: flex-start; gap: 8px; border-color: #444;">
                                 <div style="display: flex; justify-content: space-between; width: 100%;">
                                     <span style="font-size: 12px; font-weight: bold; color: #00ffff;">${req.id_request || 'REQ-UNKNOWN'}</span>
@@ -1550,11 +1553,14 @@
                             </div>
                         `;
                     });
+                    container.innerHTML = htmlContent;
                 } else {
                     container.innerHTML = "<div style='text-align:center; font-size:11px; color:#888; padding:15px;'>Tidak ada antrean request Pro dengan status PENDING di Google Sheets.</div>";
                 }
             } catch (err) {
-                container.innerHTML = `<div style='text-align:center; font-size:11px; color:#ff3344; padding:15px;'>⚠️ Gagal memuat data. Periksa koneksi internet atau deployment GAS Anda.</div>`;
+                if (!isSilent) {
+                    container.innerHTML = `<div style='text-align:center; font-size:11px; color:#ff3344; padding:15px;'>⚠️ Gagal memuat data. Periksa koneksi internet atau deployment GAS Anda.</div>`;
+                }
             }
         }
 
@@ -1584,6 +1590,52 @@
                 }
             });
         }
+
+        // SYSTEM AUTO REFRESH DENGAN POLLING TIAP 5 DETIK
+        setInterval(async () => {
+            // 1. Auto refresh data Panel Admin saat tab Admin sedang dibuka
+            let adminSection = document.getElementById('view-admin');
+            if (adminSection && adminSection.classList.contains('active')) {
+                loadAdminData(true);
+            }
+
+            // 2. Auto cek status akun user secara otomatis tanpa refresh halaman
+            if (currentUser && currentUser.isLoggedIn && currentUser.pass && !currentUser.isPro) {
+                try {
+                    let res = await fetch(API_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ 
+                            action: "login", 
+                            username: currentUser.email || currentUser.name, 
+                            email: currentUser.email || currentUser.name, 
+                            password: currentUser.pass 
+                        })
+                    });
+                    let result = await res.json();
+                    if (result.status === "success" && result.data) {
+                        let userData = result.data;
+                        let oldPro = currentUser.isPro;
+                        let oldStatus = currentUser.requestStatus;
+                        
+                        if (userData.isPro !== oldPro || userData.requestStatus !== oldStatus) {
+                            currentUser.isPro = userData.isPro === true;
+                            currentUser.requestStatus = userData.requestStatus || "FREE";
+                            currentUser.expiredDate = userData.expiredDate || "";
+                            localStorage.setItem('racebox_current_user', JSON.stringify(currentUser));
+                            updateAuthUI();
+                            
+                            if (currentUser.isPro && !oldPro) {
+                                showToast("🎉 Selamat! Akun Pro kamu telah DISETUJUI oleh Admin!", "success");
+                            } else if (currentUser.requestStatus === "REJECTED" && oldStatus !== "REJECTED") {
+                                showToast("❌ Request Pro kamu ditolak/di-reset oleh Admin.", "error");
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Penanganan error silent di latar belakang
+                }
+            }
+        }, 5000);
     </script>
 </body>
 </html>
