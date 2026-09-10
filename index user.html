@@ -1,0 +1,1589 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>RaceBox Pro Ultimate - Telemetry, Dyno & Tools V3</title>
+    
+    <!-- PWA Manifest Inline -->
+    <link rel="manifest" href='data:application/manifest+json,{"name":"RaceBox Pro","short_name":"RaceBox","start_url":".","display":"standalone","background_color":"#0a0a0a","theme_color":"#00ff66","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/5312/5312433.png","sizes":"512x512","type":"image/png"}]}'>
+
+    <!-- External Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; user-select: none; }
+        
+        body { 
+            background: linear-gradient(135deg, #050505 0%, #0a1410 50%, #050505 100%);
+            background-size: 200% 200%;
+            animation: bgShift 15s ease infinite;
+            color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; 
+        }
+        body.hud-active { transform: scaleX(-1); }
+
+        @keyframes bgShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+        /* CUSTOM TOAST NOTIFICATION */
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { 
+            background: rgba(15, 20, 18, 0.90); border-left: 4px solid #00ff66; color: #fff; padding: 15px 20px; border-radius: 8px; 
+            font-size: 13px; font-weight: bold; box-shadow: 0 10px 30px rgba(0,0,0,0.6); backdrop-filter: blur(10px); 
+            transform: translateX(120%); opacity: 0; transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); 
+            display: flex; align-items: center; gap: 12px; min-width: 250px; max-width: 90vw;
+        }
+        .toast.show { transform: translateX(0); opacity: 1; }
+        .toast.error { border-left-color: #ff3344; }
+        .toast.warning { border-left-color: #ffcc00; }
+        .toast-icon { font-size: 18px; filter: drop-shadow(0 0 5px currentColor); }
+
+        /* CUSTOM ANIMATED CONFIRM MODAL */
+        .confirm-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 10000; backdrop-filter: blur(8px); opacity: 0; transition: opacity 0.3s ease; }
+        .confirm-modal.show { display: flex; opacity: 1; }
+        .confirm-box { background: rgba(15, 20, 18, 0.95); border: 1px solid #00ff66; border-radius: 12px; padding: 25px; width: 320px; text-align: center; box-shadow: 0 0 30px rgba(0,255,102,0.3); transform: scale(0.8); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .confirm-modal.show .confirm-box { transform: scale(1); animation: modalBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .confirm-title { font-size: 16px; font-weight: 900; color: #fff; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .confirm-text { font-size: 12px; color: #aaa; margin-bottom: 20px; line-height: 1.4; }
+        .confirm-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+        /* BOOT SCREEN */
+        .boot-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 9999; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; color: #00ff66;
+            font-family: monospace; transition: opacity 0.8s ease-in-out, visibility 0.8s;
+        }
+        .boot-screen.hide { opacity: 0; visibility: hidden; }
+        .boot-logo { font-size: 32px; font-weight: 900; letter-spacing: 5px; text-shadow: 0 0 20px rgba(0,255,102,0.8); margin-bottom: 20px; animation: glitch 1.5s infinite; }
+        .boot-text { font-size: 12px; color: #00ffff; opacity: 0.8; }
+        .boot-bar { width: 200px; height: 4px; background: #222; margin-top: 15px; border-radius: 2px; overflow: hidden; }
+        .boot-progress { width: 0%; height: 100%; background: #00ff66; box-shadow: 0 0 10px #00ff66; animation: loadBar 2s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+
+        @keyframes loadBar { 0% { width: 0%; } 50% { width: 70%; } 100% { width: 100%; } }
+        @keyframes glitch { 0%, 100% { transform: translate(0); } 20% { transform: translate(-2px, 2px); } 40% { transform: translate(-2px, -2px); } 60% { transform: translate(2px, 2px); } 80% { transform: translate(2px, -2px); } }
+
+        /* AUTHENTICATION 3D FLIP */
+        .auth-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(15px);
+            z-index: 2000; transition: all 0.6s ease; perspective: 1000px;
+        }
+        .auth-container.hidden { opacity: 0; visibility: hidden; transform: scale(1.1); pointer-events: none; }
+        
+        .flip-card { width: 320px; height: 450px; position: relative; transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275); transform-style: preserve-3d; }
+        .flip-card.flipped { transform: rotateY(180deg); }
+        
+        .flip-front, .flip-back {
+            position: absolute; width: 100%; height: 100%; backface-visibility: hidden;
+            background: rgba(15, 20, 18, 0.8); border: 1px solid #00ff6644; border-radius: 15px;
+            padding: 30px 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.6), inset 0 0 20px rgba(0,255,102,0.1);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+        .flip-back { transform: rotateY(180deg); border-color: #00ffff44; box-shadow: 0 15px 35px rgba(0,0,0,0.6), inset 0 0 20px rgba(0,255,255,0.1); }
+        
+        .flip-card .flip-front { pointer-events: auto; }
+        .flip-card .flip-back { pointer-events: none; }
+        .flip-card.flipped .flip-front { pointer-events: none; }
+        .flip-card.flipped .flip-back { pointer-events: auto; }
+
+        .auth-title { font-size: 20px; font-weight: 900; color: #fff; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 2px; }
+        .auth-subtitle { font-size: 11px; color: #888; margin-bottom: 25px; text-align: center; }
+        .auth-input-group { width: 100%; margin-bottom: 12px; }
+        .auth-link { font-size: 11px; color: #00ff66; margin-top: 15px; cursor: pointer; text-decoration: underline; transition: 0.3s; }
+        .auth-link:hover { color: #fff; text-shadow: 0 0 10px #00ff66; }
+        .flip-back .auth-link { color: #00ffff; }
+
+        /* SIDEBAR & OVERLAY */
+        .menu-btn { font-size: 24px; background: none; border: none; color: #00ff66; cursor: pointer; padding: 0 10px 0 0; transition: transform 0.2s; }
+        .menu-btn:active { transform: scale(0.8); }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 28px; color: #888; cursor: pointer; background: none; border: none; transition: 0.2s; }
+        .close-btn:hover { color: #ff3344; transform: scale(1.2) rotate(90deg); }
+        
+        .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); z-index: 999; opacity: 0; visibility: hidden; transition: all 0.4s ease; }
+        .sidebar-overlay.show { opacity: 1; visibility: visible; }
+
+        .sidebar { position: fixed; top: 0; left: 0; width: 260px; height: 100vh; background: #111; border-right: 1px solid #222; display: flex; flex-direction: column; padding-top: 60px; z-index: 1000; transform: translateX(-105%); transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow: 10px 0 30px rgba(0,0,0,0.8); }
+        .sidebar.open { transform: translateX(0); }
+        
+        .sidebar-top { display: flex; flex-direction: column; width: 100%; padding: 0 15px; }
+        .brand { color: #00ff66; font-weight: 900; font-size: 18px; margin-bottom: 20px; text-align: left; letter-spacing: 2px; }
+        
+        .nav-item { width: 100%; height: 44px; margin-bottom: 8px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; display: flex; align-items: center; padding: 0 15px; color: #888; cursor: pointer; font-size: 16px; text-decoration: none; gap: 12px; opacity: 0; transform: translateX(-20px); transition: opacity 0.4s ease, transform 0.4s ease, background 0.3s, border-color 0.3s, box-shadow 0.3s; }
+        .nav-item:hover { background: #1a221d; border-color: #00ff6655; transform: translateX(5px) !important; color: #fff; }
+        
+        .sidebar.open .nav-item { opacity: 1; transform: translateX(0); }
+        .sidebar.open .nav-item:nth-child(2) { transition-delay: 0.05s; }
+        .sidebar.open .nav-item:nth-child(3) { transition-delay: 0.10s; }
+        .sidebar.open .nav-item:nth-child(4) { transition-delay: 0.15s; }
+        .sidebar.open .nav-item:nth-child(5) { transition-delay: 0.20s; }
+        .sidebar.open .nav-item:nth-child(6) { transition-delay: 0.25s; }
+        .sidebar.open .nav-item:nth-child(7) { transition-delay: 0.30s; }
+        .sidebar.open .nav-item:nth-child(8) { transition-delay: 0.35s; }
+        .sidebar.open .nav-item:nth-child(9) { transition-delay: 0.40s; }
+
+        .nav-item span { font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        .nav-item.active { background: #112a1a; border-color: #00ff66; color: #00ff66; box-shadow: 0 0 15px rgba(0, 255, 102, 0.4); }
+
+        .dev-mini-badge { position: absolute; bottom: 20px; width: 100%; font-size: 10px; color: #00ffff; font-family: monospace; text-align: center; opacity: 0.7; }
+
+        @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(20px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes neonPulse { 0% { text-shadow: 0 0 10px rgba(0,255,102,0.3); } 50% { text-shadow: 0 0 25px rgba(0,255,102,0.8); } 100% { text-shadow: 0 0 10px rgba(0,255,102,0.3); } }
+        @keyframes modalBounce { 0% { transform: scale(0.8); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+
+        .main-content { flex: 1; display: flex; flex-direction: column; height: 100vh; overflow-y: auto; width: 100%; opacity: 0; transition: opacity 1s ease; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: rgba(20,20,20,0.8); backdrop-filter: blur(8px); border-bottom: 1px solid #222; font-size: 10px; flex-wrap: wrap; gap: 8px; position: sticky; top: 0; z-index: 500;}
+        .top-bar-left { display: flex; align-items: center; }
+        .status-pill { background: #1c1c1c; border: 1px solid #333; padding: 4px 8px; border-radius: 6px; font-family: monospace; white-space: nowrap; margin-right: 5px; transition: 0.3s; }
+        
+        .view-section { display: none; padding: 15px; flex: 1; flex-direction: column; gap: 10px; max-width: 800px; margin: 0 auto; width: 100%; }
+        .view-section.active { display: flex; animation: fadeSlideUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+        .panel-box { background: #141414; border: 1px solid #262626; border-radius: 10px; padding: 12px; transition: transform 0.3s ease, box-shadow 0.3s ease; }
+        .panel-box:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.6); border-color: #333; }
+        .section-title { font-size: 11px; font-weight: bold; color: #00ff66; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; }
+
+        .tool-tabs { display: flex; gap: 6px; border-bottom: 1px solid #222; padding-bottom: 8px; margin-bottom: 10px; overflow-x: auto; }
+        .tool-tab { flex: 1; min-width: 90px; padding: 8px; text-align: center; font-size: 10px; font-weight: bold; background: #181818; border: 1px solid #2a2a2a; color: #888; border-radius: 6px; cursor: pointer; transition: 0.3s; }
+        .tool-tab:hover { background: #222; color: #ccc; }
+        .tool-tab.active { background: #112a1a; border-color: #00ff66; color: #00ff66; box-shadow: 0 4px 10px rgba(0,255,102,0.2); transform: translateY(-2px); }
+
+        .speedo-container { background: #141414; border: 1px solid #262626; border-radius: 12px; padding: 15px; text-align: center; transition: 0.3s; }
+        .speedo-container:hover { border-color: #00ff6655; }
+        .timer-display { font-size: 48px; font-weight: 900; color: #00ff66; font-family: monospace; animation: neonPulse 2.5s infinite; }
+        .status-badge { font-size: 14px; font-weight: bold; color: #ffcc00; text-transform: uppercase; margin-top: 5px; letter-spacing: 2px; }
+
+        .drag-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .metric-box { background: #111; border: 1px solid #222; border-radius: 8px; padding: 10px 5px; text-align: center; transition: 0.3s; }
+        .metric-box:hover { transform: translateY(-3px) scale(1.02); border-color: #444; background: #151515; }
+        .metric-box .label { font-size: 9px; color: #777; text-transform: uppercase; }
+        .metric-box .val { font-size: 14px; font-weight: bold; color: #00ffff; font-family: monospace; margin-top: 4px; }
+
+        .weather-card { background: #0d1a15; border: 1px solid #00ff6644; border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; transition: 0.3s; }
+        
+        .tree-container { display: none; flex-direction: column; align-items: center; gap: 6px; padding: 10px; background: #0d0d0d; border-radius: 10px; border: 1px solid #222; }
+        .tree-row { display: flex; gap: 15px; }
+        .tree-light { width: 18px; height: 18px; border-radius: 50%; background: #222; border: 1px solid #444; transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .tree-light.yellow.active { background: #ffcc00; box-shadow: 0 0 20px #ffcc00, inset 0 0 5px #fff; transform: scale(1.15); border-color: #fff; }
+        .tree-light.green.active { background: #00ff66; box-shadow: 0 0 25px #00ff66, inset 0 0 5px #fff; transform: scale(1.25); border-color: #fff; }
+
+        input, select { background: #1a1a1a; color: #00ff66; border: 1px solid #333; padding: 10px 12px; border-radius: 8px; font-size: 12px; outline: none; width: 100%; font-family: monospace; transition: 0.3s; }
+        input:focus, select:focus { border-color: #00ff66; box-shadow: 0 0 8px rgba(0,255,102,0.3); background: #112a1a; }
+        label { font-size: 10px; color: #888; text-transform: uppercase; display: block; margin-bottom: 4px; font-weight: 600; }
+        .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        .form-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
+
+        .action-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+        .btn { padding: 12px; border-radius: 8px; font-weight: bold; font-size: 12px; border: 1px solid; cursor: pointer; text-align: center; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); position: relative; overflow: hidden; }
+        .btn:active { transform: scale(0.92); } 
+        .btn:hover { filter: brightness(1.2); box-shadow: 0 5px 15px rgba(0,0,0,0.4); transform: translateY(-2px); }
+        .btn-stage { background: #112211; color: #00ff66; border-color: #00ff66; }
+        .btn-reset { background: #222211; color: #ffcc00; border-color: #ffcc00; }
+        .btn-save { background: #112222; color: #00ffff; border-color: #00ffff; }
+        .btn-hud { background: #111a22; color: #33aaff; border-color: #33aaff; padding: 6px 12px; font-size: 11px; }
+        .btn-action { background: #222; color: #fff; border-color: #444; padding: 12px; font-size: 12px; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 1000; flex-direction: column; gap: 15px; backdrop-filter: blur(5px); opacity: 0; transition: opacity 0.3s ease; }
+        .modal.show { display: flex; opacity: 1; }
+        .modal.show .time-slip { animation: modalBounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .time-slip { background: #fdfae6; color: #111; font-family: 'Courier New', Courier, monospace; width: 300px; padding: 20px; border-radius: 6px; box-shadow: 0 0 40px rgba(255,255,255,0.3); transform: scale(0.8); opacity: 0; }
+
+        .setting-card { background: #121212; border: 1px solid #222; border-radius: 10px; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; transition: 0.3s; }
+        .setting-card:hover { transform: translateY(-2px); border-color: #444; background: #181818; }
+        .setting-label { font-size: 12px; font-weight: 600; color: #ffffff; }
+        .custom-checkbox { width: 20px; height: 20px; accent-color: #00ff66; cursor: pointer; transition: 0.2s; }
+        
+        .dyno-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        .dyno-stat-card { background: #0c1812; border: 1px solid #00ff6633; border-radius: 10px; padding: 12px; text-align: center; transition: 0.3s; }
+        .dyno-stat-card .val { font-size: 22px; font-weight: 900; color: #00ff66; font-family: monospace; }
+        .dyno-stat-card .unit { font-size: 10px; color: #888; }
+
+        .gear-table { width: 100%; border-collapse: collapse; font-size: 11px; font-family: monospace; margin-top: 8px; }
+        .gear-table th, .gear-table td { border: 1px solid #222; padding: 8px; text-align: center; transition: 0.2s; }
+        .gear-table th { background: #1a1a1a; color: #00ff66; }
+
+        .rpm-display-container { background: #0a1410; border: 1px solid #00ff6655; border-radius: 12px; padding: 20px; text-align: center; overflow: hidden; transition: 0.3s; }
+        .rpm-big-number { font-size: 54px; font-weight: 900; color: #00ff66; font-family: monospace; line-height: 1; animation: neonPulse 2s infinite; }
+        .rpm-bar-bg { width: 100%; height: 16px; background: #1b1b1b; border-radius: 8px; margin-top: 15px; overflow: hidden; border: 1px solid #333; position: relative; }
+        .rpm-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #00ff66 0%, #ffcc00 70%, #ff3344 100%); transition: width 0.15s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        .dev-card { background: linear-gradient(135deg, #0d1a15 0%, #0f1218 100%); border: 1px solid #00ff66aa; border-radius: 12px; padding: 15px; position: relative; overflow: hidden; box-shadow: 0 0 20px rgba(0, 255, 102, 0.15); transition: 0.4s; }
+    </style>
+</head>
+<body>
+
+    <!-- CUSTOM TOAST CONTAINER -->
+    <div id="toast-container"></div>
+
+    <!-- CUSTOM ANIMATED CONFIRM MODAL -->
+    <div class="confirm-modal" id="customConfirmModal">
+        <div class="confirm-box">
+            <div style="font-size: 28px; margin-bottom: 8px;">⚠️</div>
+            <div class="confirm-title" id="confirmTitle">Konfirmasi Sistem</div>
+            <div class="confirm-text" id="confirmText">Apakah Anda yakin?</div>
+            <div class="confirm-buttons">
+                <button class="btn btn-reset" id="confirmNoBtn">BATAL</button>
+                <button class="btn btn-stage" id="confirmYesBtn">YA, LANJUTKAN</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOOT SCREEN -->
+    <div class="boot-screen" id="bootScreen">
+        <div class="boot-logo">RACEBOX</div>
+        <div class="boot-text" id="bootText">INITIALIZING TELEMETRY KERNEL...</div>
+        <div class="boot-bar"><div class="boot-progress"></div></div>
+    </div>
+
+    <!-- LOGIN & REGISTER OVERLAY -->
+    <div class="auth-container" id="authOverlay">
+        <div class="flip-card" id="authFlipCard">
+            <div class="flip-front">
+                <div style="font-size: 30px; margin-bottom: 10px; filter: drop-shadow(0 0 10px #00ff66);">🏁</div>
+                <div class="auth-title">SYSTEM LOGIN</div>
+                <div class="auth-subtitle">Akses Telemetry & Data Logger</div>
+                
+                <div class="auth-input-group">
+                    <label>Username / Email</label>
+                    <input type="text" id="loginEmail" placeholder="Masukkan username/email">
+                </div>
+                <div class="auth-input-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" placeholder="Masukkan password">
+                </div>
+                
+                <button class="btn btn-stage" style="margin-top: 10px; width:100%;" onclick="handleLogin(this)">CONNECT SYSTEM</button>
+                <div class="auth-link" onclick="toggleAuthMode()">Belum punya akun? Mendaftar di sini</div>
+            </div>
+
+            <div class="flip-back">
+                <div style="font-size: 30px; margin-bottom: 10px; filter: drop-shadow(0 0 10px #00ffff);">🚀</div>
+                <div class="auth-title" style="color: #00ffff;">REGISTER AKUN</div>
+                <div class="auth-subtitle">Buat akun untuk simpan logbook</div>
+                
+                <div class="auth-input-group">
+                    <label>Username Baru</label>
+                    <input type="text" id="regUsername" placeholder="Pilih username..." style="color:#00ffff; border-color:#00ffff44;">
+                </div>
+                <div class="auth-input-group">
+                    <label>Password</label>
+                    <input type="password" id="regPassword" placeholder="Buat password..." style="color:#00ffff; border-color:#00ffff44;">
+                </div>
+                
+                <button class="btn btn-save" style="margin-top: 10px; width:100%;" onclick="handleRegister(this)">CREATE ACCOUNT</button>
+                <div class="auth-link" onclick="toggleAuthMode()">Kembali ke halaman Login</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleMenu()"></div>
+
+    <div class="sidebar" id="sideMenu">
+        <button class="close-btn" onclick="toggleMenu()">×</button>
+        <div class="sidebar-top">
+            <div class="brand">RACEBOX PRO</div>
+            <div class="nav-item active" onclick="switchTab('drag', this)">🏁<span>Drag</span></div>
+            <div class="nav-item" onclick="switchTab('dyno', this)">📊<span id="navDynoLabel">Dyno 🔒</span></div>
+            <div class="nav-item" onclick="switchTab('tools', this)">🧰<span id="navToolsLabel">Tools 🔒</span></div>
+            <div class="nav-item" onclick="switchTab('log', this)">📝<span>Logbook</span></div>
+            <div class="nav-item" onclick="switchTab('compare', this)">📈<span id="navCompareLabel">Adu Grafik 🔒</span></div>
+            <div class="nav-item" onclick="switchTab('settings', this)">⚙️<span>Pengaturan</span></div>
+            <div class="nav-item" onclick="switchTab('account', this)" id="navAccount" style="display:none;">👤<span>Akun Pro</span></div>
+            
+            <div class="nav-item" id="navAdminPanel" style="display:none; border-color: #ff3344; color: #ff3344;" onclick="switchTab('admin', this)">
+                🛡️<span>Panel Admin</span>
+            </div>
+            
+            <a href="https://wa.me/6281910461290?text=Halo%20Developer%20RaceBox%20Pro,%20saya%20butuh%20bantuan" target="_blank" class="nav-item" style="border-color: #25d366; color: #25d366; margin-top: 10px;">
+                💬<span>WA Developer</span>
+            </a>
+        </div>
+        <div class="dev-mini-badge">DEV CORE v3.5 PRO</div>
+    </div>
+
+    <div class="main-content" id="mainApp">
+        <div class="top-bar">
+            <div class="top-bar-left">
+                <button class="menu-btn" onclick="toggleMenu()">☰</button>
+                <div class="status-pill" id="gpsStatus">📡 Mencari...</div>
+                <div class="status-pill" id="slopeStatus" style="color: #00ff66;">📐 0.0°</div>
+            </div>
+            <button class="btn btn-hud" onclick="document.body.classList.toggle('hud-active')">🚘 HUD</button>
+        </div>
+
+        <div id="view-drag" class="view-section active">
+            <div class="panel-box" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="section-title" style="margin: 0;">TARGET BALAP:</span>
+                <select id="targetDistance" style="padding: 6px 10px; font-weight: bold; width: auto;">
+                    <option value="100">100 Meter</option>
+                    <option value="201">201 Meter (Resmi)</option>
+                    <option value="402">402 Meter</option>
+                    <option value="500" selected>500 Meter (Liar)</option>
+                    <option value="1200">1200 Meter (Long)</option>
+                </select>
+            </div>
+
+            <div class="weather-card" id="weatherWidget">
+                <div>
+                    <div style="font-weight: bold; color: #00ff66;" id="weatherTemp">🌡️ Cuaca: Memuat...</div>
+                    <div style="color: #888; font-size: 10px; margin-top: 2px;" id="weatherHint">Mengambil data via GPS...</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-weight: bold; font-size: 14px; color: #00ffff; font-family: monospace;" id="daValue">DA: -- m</div>
+                    <div style="font-size: 9px; color: #aaa;">DENSITY ALTITUDE</div>
+                </div>
+            </div>
+
+            <div class="tree-container" id="treeBox">
+                <div class="tree-row">
+                    <div class="tree-light yellow" id="lightY1"></div>
+                    <div class="tree-light yellow" id="lightY2"></div>
+                    <div class="tree-light yellow" id="lightY3"></div>
+                </div>
+                <div class="tree-row"><div class="tree-light green" id="lightGreen"></div></div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                <div class="panel-box" style="text-align: center;">
+                    <span style="font-size: 9px; color: #777;">JARAK TEMPUH</span>
+                    <div style="font-size: 18px; font-weight: bold; color: #00ffff; font-family: monospace;" id="dragDistance">0.0 m</div>
+                </div>
+                <div class="panel-box" style="text-align: center;">
+                    <span style="font-size: 9px; color: #777;">KECEPATAN</span>
+                    <div style="font-size: 18px; font-weight: bold; color: #fff; font-family: monospace;" id="dragSpeed">0 km/h</div>
+                </div>
+                <div class="panel-box" style="text-align: center;">
+                    <span style="font-size: 9px; color: #777;">G-FORCE</span>
+                    <div style="font-size: 18px; font-weight: bold; color: #ffcc00; font-family: monospace;" id="dragGForce">0.00 G</div>
+                </div>
+            </div>
+
+            <div class="speedo-container">
+                <div class="timer-display" id="dragTimer">00:00.00</div>
+                <div class="status-badge" id="dragStatus">STANDBY</div>
+            </div>
+
+            <div class="drag-metrics">
+                <div class="metric-box"><div class="label">Reaksi (RT)</div><div class="val" style="color:#ffcc00;" id="resRT">-.--- s</div></div>
+                <div class="metric-box"><div class="label">60 ft Time</div><div class="val" id="res60ft">--.-- s</div></div>
+                <div class="metric-box"><div class="label">201 Meter</div><div class="val" id="res201m">--.-- s</div></div>
+                <div class="metric-box"><div class="label">402 Meter</div><div class="val" id="res402m">--.-- s</div></div>
+                <div class="metric-box"><div class="label">500 Meter</div><div class="val" id="res500m">--.-- s</div></div>
+                <div class="metric-box"><div class="label">1200 Meter</div><div class="val" id="res1200m">--.-- s</div></div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div class="metric-box"><div class="label">TARGET FINISH TIME</div><div class="val" style="color:#00ff66; font-size: 18px;" id="resTarget">--.-- s</div></div>
+                <div class="metric-box"><div class="label">TOP SPEED</div><div class="val" style="color:#ffcc00; font-size: 18px;" id="resTopSpeed">-- km/h</div></div>
+            </div>
+
+            <div class="panel-box" id="chartPanel" style="display: none;">
+                <span class="section-title">GRAFIK KECEPATAN LIVE</span>
+                <canvas id="speedChart" style="max-height: 120px; width: 100%;"></canvas>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn btn-stage" onclick="armSystemWithTree()">🏁 STAGE</button>
+                <button class="btn btn-reset" onclick="resetDrag()">RESET</button>
+                <button class="btn btn-save" onclick="openSlipModal()">💾 LIHAT STRUK</button>
+            </div>
+        </div>
+
+        <div id="view-dyno" class="view-section">
+            <div class="panel-box">
+                <div class="section-title">
+                    <span>📊 VIRTUAL DYNO ANALYSIS</span>
+                    <button class="btn btn-hud" onclick="loadRunToDyno()" style="padding: 4px 8px;">🔄 AMBIL TEST RUN TERAKHIR</button>
+                </div>
+                
+                <div class="form-grid-3" style="margin-top: 10px;">
+                    <div><label>Total Bobot (kg)</label><input type="number" id="dynoWeight" value="130" onchange="runDynoAnalysis()"></div>
+                    <div><label>Koef. Drag (Cd)</label><input type="number" id="dynoCd" value="0.60" step="0.05" onchange="runDynoAnalysis()"></div>
+                    <div><label>Efisiensi Trans</label><input type="number" id="dynoEff" value="0.88" step="0.01" onchange="runDynoAnalysis()"></div>
+                </div>
+            </div>
+
+            <div class="dyno-stat-grid">
+                <div class="dyno-stat-card">
+                    <span style="font-size: 11px; color: #888;">PEAK POWER (HP)</span>
+                    <div class="val" id="dynoPeakHP">0.0 <span class="unit">Wheel HP</span></div>
+                    <div style="font-size: 10px; color: #00ffff; margin-top: 4px;" id="dynoPeakEngineHP">Est. Engine: 0.0 HP</div>
+                </div>
+                <div class="dyno-stat-card" style="border-color: #ffcc0033;">
+                    <span style="font-size: 11px; color: #888;">PEAK TORQUE (Nm)</span>
+                    <div class="val" style="color: #ffcc00;" id="dynoPeakTorque">0.0 <span class="unit">Nm</span></div>
+                    <div style="font-size: 10px; color: #ff8800; margin-top: 4px;" id="dynoPeakSpeed">at 0 km/h</div>
+                </div>
+            </div>
+
+            <div class="panel-box">
+                <span class="section-title">KURVA DYNO (HP & TORSI VS SPEED)</span>
+                <canvas id="dynoChart" style="max-height: 250px; width: 100%; margin-top: 10px;"></canvas>
+            </div>
+        </div>
+
+        <div id="view-tools" class="view-section">
+            <div class="tool-tabs">
+                <div class="tool-tab active" onclick="switchToolTab('rpm', this)">🎙️ Acoustic RPM</div>
+                <div class="tool-tab" onclick="switchToolTab('jetting', this)">⛽ Jetting</div>
+                <div class="tool-tab" onclick="switchToolTab('trans', this)">⚙️ Rasio Gigi</div>
+                <div class="tool-tab" onclick="switchToolTab('compression', this)">🔩 Kompresi</div>
+            </div>
+
+            <div id="tool-rpm" style="display: flex; flex-direction: column; gap: 10px;">
+                <div class="rpm-display-container">
+                    <div style="font-size: 10px; color: #888; letter-spacing: 1.5px; font-weight: bold; text-transform: uppercase;">ACOUSTIC TACHOMETER (FFT)</div>
+                    <div class="rpm-big-number" id="rpmDisplay">0</div>
+                    <div style="font-size: 11px; font-weight: bold; color: #00ffff; margin-top: 5px;">REVOLUTIONS PER MINUTE</div>
+                    
+                    <div class="rpm-bar-bg"><div class="rpm-bar-fill" id="rpmBar"></div></div>
+                    <div style="display: flex; justify-content: space-between; font-size: 9px; color: #666; margin-top: 6px; font-family: monospace;">
+                        <span>0</span><span>3000</span><span>6000</span><span>9000</span><span>12000</span><span style="color: #ff3344; font-weight: bold;">15000+</span>
+                    </div>
+                </div>
+
+                <div class="panel-box">
+                    <div class="section-title">SETTING MIC & MESIN</div>
+                    <div class="form-grid-2">
+                        <div>
+                            <label>Tipe Mesin</label>
+                            <select id="rpmEngineType">
+                                <option value="0.5">4-Tak 1-Silinder</option>
+                                <option value="1.0" selected>2-Tak 1-Silinder</option>
+                                <option value="1.0">4-Tak 2-Silinder</option>
+                                <option value="2.0">4-Tak 4-Silinder</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Sensitivitas</label>
+                            <select id="rpmSensitivity">
+                                <option value="-65">Tinggi (Indoor)</option>
+                                <option value="-50" selected>Normal (Outdoor)</option>
+                                <option value="-35">Rendah (Bising)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                        <button class="btn btn-stage" id="btnStartRpm" onclick="toggleRpmMeter()">🎙️ START MIC</button>
+                        <button class="btn btn-reset" onclick="stopRpmMeter()">STOP MIC</button>
+                    </div>
+                    <div style="font-size: 10px; color: #888; text-align: center; margin-top: 10px;" id="rpmStatus">Status Mic: OFFLINE</div>
+                </div>
+            </div>
+
+            <div id="tool-jetting" style="display: none; flex-direction: column; gap: 10px;">
+                <div class="panel-box">
+                    <div class="section-title">⛽ KALKULATOR JETTING SPUYER</div>
+                    <div class="form-grid-2">
+                        <div><label>Density Alt (DA)</label><input type="number" id="jettingDA" value="100" onchange="calcJetting()"></div>
+                        <div><label>Suhu Udara (°C)</label><input type="number" id="jettingTemp" value="30" onchange="calcJetting()"></div>
+                    </div>
+                    <div class="form-grid-2">
+                        <div><label>Main Jet (Saat Ini)</label><input type="number" id="jettingCurrentMJ" value="135" onchange="calcJetting()"></div>
+                        <div><label>Pilot Jet (Saat Ini)</label><input type="number" id="jettingCurrentPJ" value="42" onchange="calcJetting()"></div>
+                    </div>
+                </div>
+
+                <div class="panel-box" style="background: #0d1a15; border-color: #00ff6644;">
+                    <div class="section-title" style="color: #00ffff;">REKOMENDASI SPUYER BARU</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: center; margin: 10px 0;">
+                        <div style="background: #111; padding: 12px; border-radius: 8px;">
+                            <span style="font-size: 9px; color: #888;">MAIN JET (MJ)</span>
+                            <div style="font-size: 24px; font-weight: bold; color: #00ff66;" id="resRecMJ">135</div>
+                        </div>
+                        <div style="background: #111; padding: 12px; border-radius: 8px;">
+                            <span style="font-size: 9px; color: #888;">PILOT JET (PJ)</span>
+                            <div style="font-size: 24px; font-weight: bold; color: #00ffff;" id="resRecPJ">42</div>
+                        </div>
+                    </div>
+                    <div style="font-size: 12px; font-weight: bold; color: #ffcc00; margin-top: 5px;" id="jettingStatus">Kondisi campuran bensin: IDEAL</div>
+                    <div style="font-size: 11px; color: #bbb; margin-top: 5px; line-height: 1.4;" id="jettingAdvice">--</div>
+                </div>
+            </div>
+
+            <div id="tool-trans" style="display: none; flex-direction: column; gap: 10px;">
+                <div class="panel-box">
+                    <div class="section-title">⚙️ KALKULATOR TOP SPEED TEORETIS</div>
+                    <span style="font-size: 10px; color: #00ff66; font-weight: bold;">PROFIL BAN:</span>
+                    <div class="form-grid-3">
+                        <div><label>Lebar</label><input type="number" id="tireWidth" value="90" onchange="calcTransmission()"></div>
+                        <div><label>Rasio</label><input type="number" id="tireAspect" value="80" onchange="calcTransmission()"></div>
+                        <div><label>Velg</label><input type="number" id="tireRim" value="17" onchange="calcTransmission()"></div>
+                    </div>
+
+                    <span style="font-size: 10px; color: #00ff66; font-weight: bold;">DRIVETRAIN & LIMITER:</span>
+                    <div class="form-grid-3">
+                        <div><label>Primary</label><input type="number" id="primaryRatio" value="3.21" step="0.01" onchange="calcTransmission()"></div>
+                        <div><label>Gear Depan</label><input type="number" id="sprocketFront" value="14" onchange="calcTransmission()"></div>
+                        <div><label>Gear Belakang</label><input type="number" id="sprocketRear" value="36" onchange="calcTransmission()"></div>
+                    </div>
+                    <div class="form-grid-2">
+                        <div><label>Max RPM</label><input type="number" id="maxRpm" value="12000" step="500" onchange="calcTransmission()"></div>
+                        <div><label>Jumlah Gigi</label>
+                            <select id="totalGears" onchange="calcTransmission()">
+                                <option value="4">4 Speed</option><option value="5">5 Speed</option><option value="6" selected>6 Speed</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <span style="font-size: 10px; color: #00ff66; font-weight: bold;">RASIO GIGI (1 - 6):</span>
+                    <div class="form-grid-3">
+                        <div><label>Gigi 1</label><input type="number" id="g1Ratio" value="3.00" step="0.01" onchange="calcTransmission()"></div>
+                        <div><label>Gigi 2</label><input type="number" id="g2Ratio" value="1.93" step="0.01" onchange="calcTransmission()"></div>
+                        <div><label>Gigi 3</label><input type="number" id="g3Ratio" value="1.43" step="0.01" onchange="calcTransmission()"></div>
+                    </div>
+                    <div class="form-grid-3">
+                        <div><label>Gigi 4</label><input type="number" id="g4Ratio" value="1.14" step="0.01" onchange="calcTransmission()"></div>
+                        <div><label>Gigi 5</label><input type="number" id="g5Ratio" value="0.96" step="0.01" onchange="calcTransmission()"></div>
+                        <div><label>Gigi 6</label><input type="number" id="g6Ratio" value="0.84" step="0.01" onchange="calcTransmission()"></div>
+                    </div>
+                </div>
+
+                <div class="panel-box">
+                    <div class="section-title">TABEL TOP SPEED PER GIGI</div>
+                    <table class="gear-table">
+                        <thead><tr><th>GIGI</th><th>RASIO</th><th>TOTAL RATIO</th><th>TOP SPEED</th></tr></thead>
+                        <tbody id="gearTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="tool-compression" style="display: none; flex-direction: column; gap: 10px;">
+                <div class="panel-box">
+                    <div class="section-title">🔩 KALKULATOR RASIO KOMPRESI</div>
+                    <div class="form-grid-2">
+                        <div><label>Piston Bore (mm)</label><input type="number" id="compBore" value="62.0" step="0.1" onchange="calcCompression()"></div>
+                        <div><label>Stroke (mm)</label><input type="number" id="compStroke" value="58.0" step="0.1" onchange="calcCompression()"></div>
+                    </div>
+                    <div class="form-grid-2">
+                        <div><label>Volume Dome (cc)</label><input type="number" id="compDome" value="14.5" step="0.1" onchange="calcCompression()"></div>
+                        <div><label>Tebal Paking (mm)</label><input type="number" id="compGasket" value="0.5" step="0.1" onchange="calcCompression()"></div>
+                    </div>
+                    <div class="form-grid-2">
+                        <div><label>Deck Height (mm)</label><input type="number" id="compDeck" value="0.3" step="0.1" onchange="calcCompression()"></div>
+                        <div><label>Klep IN Tutup (ABDC °)</label><input type="number" id="compCamAbdc" value="55" step="1" onchange="calcCompression()"></div>
+                    </div>
+                </div>
+
+                <div class="panel-box" style="background: #112211; border-color: #00ff6644;">
+                    <div class="section-title" style="color: #00ff66;">HASIL KALKULASI</div>
+                    <div class="dyno-stat-grid" style="margin-top: 10px;">
+                        <div style="background: #111; padding: 10px; border-radius: 8px; text-align: center;">
+                            <span style="font-size: 9px; color: #888;">KAPASITAS MESIN</span>
+                            <div style="font-size: 18px; font-weight: bold; color: #00ffff;" id="resEngineCC">0.0 cc</div>
+                        </div>
+                        <div style="background: #111; padding: 10px; border-radius: 8px; text-align: center;">
+                            <span style="font-size: 9px; color: #888;">STATIC (SCR)</span>
+                            <div style="font-size: 18px; font-weight: bold; color: #00ff66;" id="resSCR">0.0 : 1</div>
+                        </div>
+                    </div>
+                    <div class="dyno-stat-grid">
+                        <div style="background: #111; padding: 10px; border-radius: 8px; text-align: center;">
+                            <span style="font-size: 9px; color: #888;">DYNAMIC (DCR)</span>
+                            <div style="font-size: 18px; font-weight: bold; color: #ffcc00;" id="resDCR">0.0 : 1</div>
+                        </div>
+                        <div style="background: #111; padding: 10px; border-radius: 8px; text-align: center;">
+                            <span style="font-size: 9px; color: #888;">BBM IDEAL</span>
+                            <div style="font-size: 13px; font-weight: bold; color: #ff3344; margin-top: 5px;" id="resFuelFuel">Pertamax</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-log" class="view-section">
+            <div class="panel-box">
+                <div class="section-title">SPEK MOTOR & SETELAN RUN INI</div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <input type="text" id="specMotor" placeholder="Contoh: Ninja 150 / Sleep Engine 200cc">
+                    <input type="text" id="specSettings" placeholder="Setelan: Roller 8g / Karbu PWK 38">
+                </div>
+            </div>
+            <div class="panel-box">
+                <div class="section-title">RIWAYAT TEST RUN</div>
+                <div id="historyList"><p style="font-size:11px; color:#666;">Data belum tersedia.</p></div>
+            </div>
+        </div>
+
+        <div id="view-compare" class="view-section">
+            <div class="panel-box">
+                <div class="section-title">GHOST MODE - ADU GRAFIK MOTOR</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                    <div>
+                        <span style="font-size: 10px; color: #00ff66; font-weight: bold;">RUN A (HIJAU):</span>
+                        <select id="compareRunA" style="width: 100%; margin-top: 4px;"><option>Run 1</option></select>
+                    </div>
+                    <div>
+                        <span style="font-size: 10px; color: #00ffff; font-weight: bold;">RUN B (CYAN):</span>
+                        <select id="compareRunB" style="width: 100%; margin-top: 4px;"><option>Run 2</option></select>
+                    </div>
+                </div>
+                <button class="btn btn-action" style="width: 100%; background: #112a22; color: #00ff66;" onclick="showToast('Fitur segera hadir!', 'warning')">📊 ADU GRAFIK SEKARANG</button>
+            </div>
+        </div>
+
+        <div id="view-settings" class="view-section">
+            <div class="section-title" style="font-size: 14px; color: #ffcc00;">PENGATURAN SYSTEM</div>
+
+            <div class="section-title" style="margin-top: 10px;">UMUM & KESELAMATAN</div>
+            <div class="setting-card">
+                <span class="setting-label">Satuan Kecepatan</span>
+                <select id="speedUnit" style="width: auto; padding: 6px 10px;">
+                    <option value="kmh" selected>km/h</option><option value="mph">mph</option>
+                </select>
+            </div>
+            <div class="setting-card">
+                <span class="setting-label">Voice Announcer (Suara Hasil)</span>
+                <input type="checkbox" id="voiceAnnounceToggle" class="custom-checkbox" checked>
+            </div>
+            <div class="setting-card">
+                <span class="setting-label">Suara Beep & Getar Timer</span>
+                <input type="checkbox" id="soundVibToggle" class="custom-checkbox" checked>
+            </div>
+
+            <div class="section-title" style="margin-top: 15px; color: #00ffff;">KUALITAS SINYAL GPS & LAYAR</div>
+            <div class="setting-card" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                <span class="setting-label" id="accuracyLabel">Batas Akurasi Minimum 🔒</span>
+                <select id="gpsAccuracyLimit" style="width: 100%;">
+                    <option value="50">Kurang (50 m)</option><option value="30">Sedang (30 m)</option>
+                    <option value="15" id="opt15">Akurat (15 m) 🔒</option><option value="5" id="opt5">Sangat Akurat (5 m) 🔒</option><option value="2" id="opt2">Presisi Tinggi (2 m) 🔒</option>
+                </select>
+            </div>
+
+            <div class="setting-card">
+                <span class="setting-label">📱 Layar Tetap Menyala (Wake Lock)</span>
+                <input type="checkbox" id="wakeLockToggle" class="custom-checkbox" onchange="toggleWakeLock()">
+            </div>
+            <div class="setting-card">
+                <span class="setting-label">📡 Wajib Sinyal GPS Bagus (&le; 15m)</span>
+                <input type="checkbox" id="strictGpsToggle" class="custom-checkbox" checked>
+            </div>
+
+            <div class="section-title" style="margin-top: 15px;">DATA LOG & EKSPOR</div>
+            <div class="setting-card">
+                <span class="setting-label">Total Bobot Motor+Joki (KG)</span>
+                <input type="number" id="totalWeight" value="130" style="width: 80px; text-align: center; padding: 6px;">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                <button class="btn btn-action" onclick="showToast('Mengekspor file CSV...', 'success')">📥 EXPORT (CSV)</button>
+                <button class="btn btn-action" onclick="document.getElementById('importFile').click()">📤 IMPORT (CSV)</button>
+                <input type="file" id="importFile" style="display: none;" accept=".csv">
+            </div>
+
+            <div class="dev-card" style="margin-top: 20px;">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div style="width: 50px; height: 50px; border-radius: 12px; background: #112a1a; border: 2px solid #00ff66; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 0 15px rgba(0,255,102,0.4);">🏎️</div>
+                    <div>
+                        <div style="font-size: 9px; color: #00ffff; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">Lead Developer & Architect</div>
+                        <div style="font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 0 10px rgba(0,255,102,0.5);">JIDAN AUTOTOOLS</div>
+                        <div style="font-size: 9px; color: #888; margin-top: 2px;">RaceBox Labs • Telemetry & Audio DSP</div>
+                    </div>
+                </div>
+                <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #222222; display: flex; justify-content: space-between; font-size: 10px; color: #aaa; font-family: monospace;">
+                    <span>CORE: <b>jidan auto tools + GPS</b></span><span style="color: #00ff66;">VER: <b>v3.0 PRO</b></span>
+                </div>
+            </div>
+            <button class="btn btn-action" style="margin-top: 20px; border-color: #ff3344; color: #ff3344; background: #1a080a; width: 100%;" onclick="showToast('Semua data logbook terhapus!', 'success')">🗑️ HAPUS SEMUA LOGBOOK</button>
+        </div>
+
+        <div id="view-account" class="view-section">
+            <div class="panel-box">
+                <div class="section-title">👤 MANAJEMEN AKUN & UPGRADE PRO</div>
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+                    <div style="background: #111; padding: 15px; border-radius: 10px; border: 1px solid #333;">
+                        <div style="font-size: 10px; color: #888;">STATUS AKUN SAAT INI</div>
+                        <div style="font-size: 16px; font-weight: bold; color: #00ff66; margin-top: 5px;" id="accountStatusDisplay">FREE TIER (Fitur Terbatas)</div>
+                        <div style="font-size: 11px; color: #aaa; margin-top: 5px;" id="accountEmailDisplay">Email: -</div>
+                        <div style="font-size: 11px; color: #ffcc00; margin-top: 5px;" id="accountExpiredDisplay"></div>
+                    </div>
+
+                    <div id="freeUpgradeSection">
+                        <div class="section-title" style="margin-top: 15px; color: #ffcc00;">UPGRADE KE PRO (FITUR LENGKAP)</div>
+                        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+                            <div class="panel-box" style="text-align: center; border-color: #00ff66;">
+                                <div style="font-size: 12px; color: #00ff66; font-weight: bold;">PAKET PRO 1 BULAN</div>
+                                <div style="font-size: 24px; font-weight: bold; color: #fff; margin-top: 5px; margin-bottom: 10px;">Rp 5.000</div>
+                                <div style="font-size: 15px; font-weight: bold; color: #fbfdfd; margin-bottom: 10px; padding: 0 10px;">
+                                    A/n JIDAN AUTO TOOLS
+                                </div>
+                                <div style="background: #fff; padding: 10px; border-radius: 8px; display: inline-block; margin-bottom: 10px;">
+                                    <img src="https://i.postimg.cc/cLt1VLkw/Whats-App-Image-2026-09-10-at-16-04-35.jpg' border='0' alt='Whats-App-Image-2026-09-10-at-15-26-52" style="width: 150px; height: 150px; display: block;">
+                                </div>
+                                <div style="font-size: 10px; color: #888; margin-bottom: 10px; padding: 0 10px;">
+                                    Scan QR code di atas menggunakan E-Wallet atau M-Banking Anda.
+                                </div>
+
+                                <div style="text-align: left; margin-bottom: 15px;">
+                                    <label style="color: #00ffff; font-weight: bold; margin-bottom: 6px;">📸 Upload Bukti Transfer (Gambar)</label>
+                                    <input type="file" id="buktiBayarFile" accept="image/*" style="padding: 8px;">
+                                </div>
+
+                                <div id="upgradeActionContainer">
+                                    <button class="btn btn-stage" style="width: 100%; background: #123d20; color: #00ff66; border-color: #00ff66;" onclick="requestUpgradePro(event)">🚀 KONFIRMASI SUDAH BAYAR</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="proActiveSection" style="display: none; text-align: center; padding: 20px; background: #0d1a15; border-radius: 10px; border: 1px solid #00ff66;">
+                        <div style="font-size: 18px; font-weight: bold; color: #00ff66;">🚀 AKUN ANDA PRO!</div>
+                        <div style="font-size: 11px; color: #ccc; margin-top: 8px;">Semua fitur Dyno, Tools Kalibrasi, Grafik Adu, dan Akurasi Presisi Tinggi sudah terbuka penuh.</div>
+                    </div>
+
+                    <button class="btn btn-reset" style="margin-top: 15px; border-color: #ff3344; color: #ff3344; background: #1a080a;" onclick="handleLogout()">🚪 KELUAR AKUN (LOGOUT)</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-admin" class="view-section">
+            <div class="panel-box">
+                <div class="section-title" style="color: #ff3344;">🛡️ PANEL ADMIN - KONFIRMASI PRO</div>
+                <p style="font-size: 11px; color: #888; margin-bottom: 10px;">Daftar request user untuk upgrade ke PRO (Terkoneksi ke Google Sheets).</p>
+                
+                <button class="btn btn-stage" style="width: 100%; border-color: #ff3344; color: #ff3344; background: #1a080a; margin-bottom: 15px;" onclick="loadAdminData()">🔄 REFRESH DATA GOOGLE SHEETS</button>
+                
+                <div id="adminDataContainer" style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="text-align: center; font-size: 11px; color: #666;">Klik Refresh untuk memuat...</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="modal" id="slipModal">
+        <div class="time-slip" id="slipCard">
+            <div style="text-align: center; font-weight: bold; border-bottom: 1px dashed #000; padding-bottom: 5px;">
+                🏁 RACEBOX PRO TELEMETRY
+            </div>
+            <div style="font-size: 11px; margin: 8px 0;" id="slipDate">--/--/----</div>
+            <div style="font-size: 12px; font-weight: bold;" id="slipMotor">Motor: -</div>
+            <div style="font-size: 11px; color: #333;" id="slipWeatherInfo">Cuaca: --°C | DA: --m</div>
+            <hr style="border: none; border-top: 1px dashed #000; margin: 8px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px;"><span>Reaction Time (RT):</span><span id="slipRT">--</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px;"><span>60ft Time:</span><span id="slip60ft">--</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px;"><span>201m Time:</span><span id="slip201m">--</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin: 8px 0; border-top: 1px solid #000; padding-top: 5px;"><span id="slipTargetLabel">500m Time:</span><span id="slipTargetVal">--</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px;"><span>Top Speed:</span><span id="slipTopSpeed">--</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px;"><span>Peak G-Accel:</span><span id="slipPeakG">--</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #444;"><span>Est. Horsepower:</span><span id="slipHP">-- HP</span></div>
+            <div style="text-align: center; font-size: 9px; margin-top: 10px; border-top: 1px dashed #000; padding-top: 5px;">OFFICIAL GPS TELEMETRY VERIFIED</div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-save" onclick="showToast('Menyimpan screenshot IG Story...', 'success')">📸 SIMPAN (IG STORY)</button>
+            <button class="btn btn-reset" onclick="closeSlipModal()">TUTUP</button>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbwOaiVAEH2YC89nkqc8iLGpJHvueWHjRqm7KtVXIaqwpdNW4yvKc_5NqsvAwxNb-ICQ/exec";
+        
+        let currentUser = {
+            isLoggedIn: false, email: "", name: "", role: "user", isPro: false, requestStatus: "FREE", proPackage: null, paymentPending: false, expiredDate: ""
+        };
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            let icon = type === 'success' ? '✅' : type === 'error' ? '❌' : '⚠️';
+            toast.innerHTML = `<span class="toast-icon">${icon}</span> <span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 400);
+            }, 3000);
+        }
+
+        function showCustomConfirm(text, onYes) {
+            document.getElementById('confirmText').innerText = text;
+            let modal = document.getElementById('customConfirmModal');
+            modal.classList.add('show');
+            
+            let yesBtn = document.getElementById('confirmYesBtn');
+            let noBtn = document.getElementById('confirmNoBtn');
+            
+            let newYes = yesBtn.cloneNode(true);
+            let newNo = noBtn.cloneNode(true);
+            yesBtn.parentNode.replaceChild(newYes, yesBtn);
+            noBtn.parentNode.replaceChild(newNo, noBtn);
+            
+            newYes.addEventListener('click', () => {
+                modal.classList.remove('show');
+                onYes();
+            });
+            
+            newNo.addEventListener('click', () => {
+                modal.classList.remove('show');
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const bootTexts = ["CONNECTING TO SATELLITE...", "CALIBRATING SENSORS...", "LOADING DSP MODULES...", "SYSTEM READY."];
+            let textEl = document.getElementById('bootText');
+            let i = 0;
+            let bootInterval = setInterval(() => {
+                i++;
+                if(i < bootTexts.length) textEl.innerText = bootTexts[i];
+                else clearInterval(bootInterval);
+            }, 500);
+
+            setTimeout(() => {
+                document.getElementById('bootScreen').classList.add('hide');
+                checkAuthStatus();
+            }, 2500);
+
+            calcJetting(); calcTransmission(); calcCompression(); renderDynoChart();
+        });
+
+        function checkAuthStatus() {
+            let savedUser = localStorage.getItem('racebox_current_user');
+            let authOverlay = document.getElementById('authOverlay');
+            let mainApp = document.getElementById('mainApp');
+
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                
+                let isOwnerOrAdmin = currentUser.role === 'admin' || currentUser.role === 'owner' || (currentUser.name && currentUser.name.toLowerCase() === 'owner') || (currentUser.email && currentUser.email.toLowerCase() === 'owner');
+                if (isOwnerOrAdmin) {
+                    currentUser.isPro = true;
+                    currentUser.expiredDate = "PERMANENT";
+                }
+
+                if (currentUser.isPro && currentUser.expiredDate && currentUser.expiredDate !== "PERMANENT") {
+                    let exp = new Date(currentUser.expiredDate);
+                    if (new Date() > exp) {
+                        currentUser.isPro = false;
+                        currentUser.requestStatus = "REJECTED";
+                        currentUser.expiredDate = "";
+                        localStorage.setItem('racebox_current_user', JSON.stringify(currentUser));
+                        showToast("Masa aktif akun Pro Anda telah berakhir!", "warning");
+                    }
+                }
+
+                authOverlay.classList.add('hidden');
+                mainApp.style.opacity = "1";
+                updateAuthUI();
+                initGPS();
+            } else {
+                authOverlay.classList.remove('hidden');
+                mainApp.style.opacity = "0";
+            }
+        }
+
+        function toggleAuthMode() {
+            document.getElementById('authFlipCard').classList.toggle('flipped');
+        }
+
+        async function handleLogin(btn) {
+            let email = document.getElementById('loginEmail').value.trim();
+            let pass = document.getElementById('loginPassword').value.trim();
+
+            if (!email || !pass) return showToast("Masukkan Email/Username dan password!", "warning");
+
+            let originalText = btn.innerText;
+            btn.innerText = "⏳ CONNECTING...";
+            btn.disabled = true;
+
+            try {
+                let res = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: "login", username: email, email: email, password: pass })
+                });
+                
+                let result = await res.json();
+
+                if (result.status === "success") {
+                    let userData = result.data;
+                    currentUser = {
+                        isLoggedIn: true, 
+                        id: userData._id, 
+                        email: userData.email, 
+                        name: userData.username, 
+                        role: userData.role || 'user', 
+                        isPro: userData.isPro === true, 
+                        requestStatus: userData.requestStatus || "FREE",
+                        expiredDate: userData.expiredDate || "",
+                        paketPro: null, 
+                        paymentPending: false
+                    };
+
+                    let isOwnerOrAdmin = currentUser.role === 'admin' || currentUser.role === 'owner' || (currentUser.name && currentUser.name.toLowerCase() === 'owner') || (currentUser.email && currentUser.email.toLowerCase() === 'owner');
+                    if (isOwnerOrAdmin) {
+                        currentUser.isPro = true;
+                        currentUser.expiredDate = "PERMANENT";
+                    }
+
+                    localStorage.setItem('racebox_current_user', JSON.stringify(currentUser));
+                    
+                    document.getElementById('authOverlay').classList.add('hidden');
+                    document.getElementById('mainApp').style.opacity = "1";
+                    updateAuthUI();
+                    initGPS();
+                    
+                    showToast(`Login Berhasil! Selamat datang, ${currentUser.name}`, "success");
+                } else {
+                    showToast(result.message || "Gagal login. Akun tidak ada atau password salah.", "error");
+                }
+            } catch (err) {
+                showToast("Akun tidak ditemukan atau gagal terhubung ke server!", "error");
+            }
+            
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+
+        async function handleRegister(btn) {
+            let user = document.getElementById('regUsername').value.trim();
+            let pass = document.getElementById('regPassword').value.trim();
+            if (!user || !pass) return showToast("Semua kolom wajib diisi!", "warning");
+            
+            let originalText = btn.innerText;
+            btn.innerText = "⏳ CREATING ACCOUNT...";
+            btn.disabled = true;
+            
+            try {
+                let res = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: "register", username: user, email: user, password: pass })
+                });
+                let result = await res.json();
+                
+                if (result.status === "success") {
+                    showToast("Pendaftaran Berhasil! Silakan Login.", "success");
+                    toggleAuthMode();
+                    document.getElementById('loginEmail').value = user;
+                    document.getElementById('loginPassword').value = pass;
+                } else {
+                    showToast(result.message || "Gagal mendaftar.", "error");
+                }
+            } catch (err) {
+                showToast("Gagal mendaftar. Periksa koneksi internet.", "error");
+            }
+
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+
+        function handleLogout() {
+            currentUser = { isLoggedIn: false, email: "", name: "", role: "user", isPro: false, requestStatus: "FREE", proPackage: null, paymentPending: false, expiredDate: "" };
+            localStorage.removeItem('racebox_current_user');
+            updateAuthUI();
+            showToast("🚪 Berhasil Logout.", "success");
+            setTimeout(() => { window.location.reload(); }, 1000);
+        }
+
+        function updateAuthUI() {
+            let navAccount = document.getElementById('navAccount');
+            let navAdminPanel = document.getElementById('navAdminPanel');
+            let dynoLabel = document.getElementById('navDynoLabel');
+            let toolsLabel = document.getElementById('navToolsLabel');
+            let compareLabel = document.getElementById('navCompareLabel');
+            let accuracyLabel = document.getElementById('accuracyLabel');
+
+            let isOwnerOrAdmin = currentUser.role === 'admin' || currentUser.role === 'owner' || (currentUser.name && currentUser.name.toLowerCase() === 'owner') || (currentUser.email && currentUser.email.toLowerCase() === 'owner');
+            let isProOrAdmin = currentUser.isPro || isOwnerOrAdmin;
+
+            if (isProOrAdmin) {
+                if (dynoLabel) dynoLabel.innerText = "Dyno";
+                if (toolsLabel) toolsLabel.innerText = "Tools";
+                if (compareLabel) compareLabel.innerText = "Adu Grafik";
+                if (accuracyLabel) accuracyLabel.innerText = "Batas Akurasi Minimum";
+                if (document.getElementById('opt15')) document.getElementById('opt15').innerText = "Akurat (15 m)";
+                if (document.getElementById('opt5')) document.getElementById('opt5').innerText = "Sangat Akurat (5 m)";
+                if (document.getElementById('opt2')) document.getElementById('opt2').innerText = "Presisi Tinggi (2 m)";
+            } else {
+                if (dynoLabel) dynoLabel.innerText = "Dyno 🔒";
+                if (toolsLabel) toolsLabel.innerText = "Tools 🔒";
+                if (compareLabel) compareLabel.innerText = "Adu Grafik 🔒";
+                if (accuracyLabel) accuracyLabel.innerText = "Batas Akurasi Minimum 🔒";
+                if (document.getElementById('opt15')) document.getElementById('opt15').innerText = "Akurat (15 m) 🔒";
+                if (document.getElementById('opt5')) document.getElementById('opt5').innerText = "Sangat Akurat (5 m) 🔒";
+                if (document.getElementById('opt2')) document.getElementById('opt2').innerText = "Presisi Tinggi (2 m) 🔒";
+            }
+
+            if (currentUser.isLoggedIn) {
+                if (navAccount) navAccount.style.display = 'flex';
+                if (isOwnerOrAdmin && navAdminPanel) navAdminPanel.style.display = 'flex';
+                else if (navAdminPanel) navAdminPanel.style.display = 'none';
+
+                document.getElementById('accountEmailDisplay').innerText = `Email: ${currentUser.email} (${currentUser.name})`;
+                
+                if (isOwnerOrAdmin) {
+                    document.getElementById('accountExpiredDisplay').innerText = "Masa Aktif Pro: PERMANENT (Owner)";
+                } else if (currentUser.isPro && currentUser.expiredDate) {
+                    document.getElementById('accountExpiredDisplay').innerText = `Masa Aktif Pro s/d: ${currentUser.expiredDate}`;
+                } else {
+                    document.getElementById('accountExpiredDisplay').innerText = "";
+                }
+
+                let upgradeActionContainer = document.getElementById('upgradeActionContainer');
+                if (isProOrAdmin) {
+                    document.getElementById('accountStatusDisplay').innerText = isOwnerOrAdmin ? "OWNER / ADMIN (PRO PERMANENT) 🛡️" : "PRO MEMBER AKTIF 🚀";
+                    document.getElementById('accountStatusDisplay').style.color = "#00ff66";
+                    document.getElementById('freeUpgradeSection').style.display = 'none';
+                    document.getElementById('proActiveSection').style.display = 'block';
+                } else {
+                    document.getElementById('accountStatusDisplay').innerText = "FREE TIER (Fitur Terbatas)";
+                    document.getElementById('accountStatusDisplay').style.color = "#ffcc00";
+                    document.getElementById('freeUpgradeSection').style.display = 'block';
+                    document.getElementById('proActiveSection').style.display = 'none';
+
+                    if (currentUser.requestStatus === 'PENDING') {
+                        upgradeActionContainer.innerHTML = `<div style="background: rgba(255,204,0,0.1); border: 1px solid #ffcc00; color: #ffcc00; padding: 12px; border-radius: 8px; font-size: 11px; font-weight: bold; text-align: center;">⏳ STATUS REQUEST: PENDING<br><span style="font-size: 9px; color: #aaa; font-weight: normal;">Menunggu konfirmasi dari Admin</span></div>`;
+                    } else if (currentUser.requestStatus === 'REJECTED') {
+                        upgradeActionContainer.innerHTML = `
+                            <div style="background: rgba(255,51,68,0.1); border: 1px solid #ff3344; color: #ff3344; padding: 10px; border-radius: 8px; font-size: 11px; font-weight: bold; text-align: center; margin-bottom: 10px;">❌ REQUEST DITOLAK / EXPIRED</div>
+                            <button class="btn btn-stage" style="width: 100%; background: #123d20; color: #00ff66; border-color: #00ff66;" onclick="requestUpgradePro(event)">🚀 KIRIM ULANG KONFIRMASI</button>
+                        `;
+                    } else {
+                        upgradeActionContainer.innerHTML = `<button class="btn btn-stage" style="width: 100%; background: #123d20; color: #00ff66; border-color: #00ff66;" onclick="requestUpgradePro(event)">🚀 KONFIRMASI SUDAH BAYAR</button>`;
+                    }
+                }
+            } else {
+                if (navAccount) navAccount.style.display = 'none';
+                if (navAdminPanel) navAdminPanel.style.display = 'none';
+            }
+        }
+
+        function toggleMenu() {
+            document.getElementById("sideMenu").classList.toggle("open");
+            document.getElementById("sidebarOverlay").classList.toggle("show");
+        }
+
+        function openSlipModal() { document.getElementById('slipModal').classList.add('show'); }
+        function closeSlipModal() { document.getElementById('slipModal').classList.remove('show'); }
+
+        async function switchTab(tabId, el) {
+            const proTabs = ['dyno', 'tools', 'compare'];
+            let isOwnerOrAdmin = currentUser.isPro || currentUser.role === 'admin' || currentUser.role === 'owner' || (currentUser.name && currentUser.name.toLowerCase() === 'owner');
+            
+            if (proTabs.includes(tabId) && !isOwnerOrAdmin) {
+                showToast(`FITUR "${tabId.toUpperCase()}" HANYA UNTUK PRO MEMBER!`, "error");
+                return switchTab('account', document.getElementById('navAccount'));
+            }
+
+            document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+
+            let targetView = document.getElementById('view-' + tabId);
+            if (targetView) {
+                targetView.classList.remove('active');
+                void targetView.offsetWidth; 
+                targetView.classList.add('active');
+            }
+
+            if (el) el.classList.add('active');
+            document.getElementById("sideMenu").classList.remove("open");
+            if(document.getElementById("sidebarOverlay")) document.getElementById("sidebarOverlay").classList.remove("show");
+
+            if (tabId === 'dyno') renderDynoChart(); 
+            if (tabId === 'admin') loadAdminData();
+        }
+
+        function switchToolTab(toolId, el) {
+            document.querySelectorAll('.tool-tab').forEach(tab => tab.classList.remove('active'));
+            ['rpm', 'jetting', 'trans', 'compression'].forEach(id => {
+                let e = document.getElementById('tool-' + id);
+                if(e) e.style.display = 'none';
+            });
+            
+            let target = document.getElementById('tool-' + toolId);
+            if (target) {
+                target.style.display = 'flex';
+                target.style.animation = 'none';
+                void target.offsetWidth;
+                target.style.animation = 'fadeSlideUp 0.4s ease-out forwards';
+            }
+            if (el) el.classList.add('active');
+        }
+
+        let gpsWatchId = null;
+        let isStaged = false;
+        let isRacing = false;
+        let raceData = { time: [], speed: [], distance: [] }; 
+        let startTime = 0;
+        let startLat, startLon;
+        let currentSpeed = 0, currentDistance = 0, currentGForce = 0;
+        let lastTime = 0, lastSpeedMs = 0;
+        let lastGpsAccuracy = 999;
+
+        function getDistanceFromLatLonInM(lat1, lon1, lat2, lon2) {
+            var R = 6371000; 
+            var dLat = (lat2 - lat1) * (Math.PI/180);
+            var dLon = (lon2 - lon1) * (Math.PI/180);
+            var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * (Math.PI/180)) * Math.cos(lat2 * (Math.PI/180)) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+            return R * c; 
+        }
+
+        function initGPS() {
+            if (!navigator.geolocation) {
+                document.getElementById('gpsStatus').innerText = "❌ GPS Tdk Support";
+                return;
+            }
+            
+            gpsWatchId = navigator.geolocation.watchPosition((pos) => {
+                let acc = pos.coords.accuracy;
+                lastGpsAccuracy = acc;
+                document.getElementById('gpsStatus').innerText = `📡 Aktif (${acc.toFixed(0)}m)`;
+                if(acc <= 15) document.getElementById('gpsStatus').style.color = "#00ff66";
+                else document.getElementById('gpsStatus').style.color = "#ffcc00";
+
+                let speedMs = pos.coords.speed || 0; 
+                currentSpeed = speedMs * 3.6; 
+                
+                let now = performance.now();
+                if (lastTime > 0) {
+                    let dt = (now - lastTime) / 1000;
+                    let dv = speedMs - lastSpeedMs;
+                    let accel = dv / dt; 
+                    currentGForce = accel / 9.81;
+                }
+                lastTime = now;
+                lastSpeedMs = speedMs;
+
+                document.getElementById('dragSpeed').innerText = Math.max(0, currentSpeed).toFixed(1) + " km/h";
+                document.getElementById('dragGForce').innerText = Math.max(0, currentGForce).toFixed(2) + " G";
+
+                if (isStaged && currentSpeed > 2 && !isRacing) {
+                    isRacing = true;
+                    isStaged = false;
+                    startTime = performance.now();
+                    startLat = pos.coords.latitude;
+                    startLon = pos.coords.longitude;
+                    raceData = { time: [], speed: [], distance: [] };
+                    document.getElementById('dragStatus').innerText = "RACING!";
+                    document.getElementById('dragStatus').style.color = "#ff3344";
+                }
+
+                if (isRacing) {
+                    let raceTime = (now - startTime) / 1000;
+                    currentDistance = getDistanceFromLatLonInM(startLat, startLon, pos.coords.latitude, pos.coords.longitude);
+                    
+                    document.getElementById('dragDistance').innerText = currentDistance.toFixed(1) + " m";
+                    document.getElementById('dragTimer').innerText = raceTime.toFixed(2);
+                    
+                    raceData.time.push(raceTime);
+                    raceData.speed.push(currentSpeed);
+                    raceData.distance.push(currentDistance);
+
+                    let targetDist = parseInt(document.getElementById('targetDistance').value);
+                    if (currentDistance >= targetDist) {
+                        isRacing = false;
+                        document.getElementById('dragStatus').innerText = `FINISH ${targetDist}M!`;
+                        document.getElementById('dragStatus').style.color = "#00ffff";
+                        document.getElementById('resTarget').innerText = raceTime.toFixed(2) + " s";
+                        document.getElementById('resTopSpeed').innerText = Math.max(...raceData.speed).toFixed(1) + " km/h";
+                    }
+                }
+            }, (err) => {
+                document.getElementById('gpsStatus').innerText = "❌ Izin GPS Ditolak";
+            }, {
+                enableHighAccuracy: true, maximumAge: 0, timeout: 5000
+            });
+        }
+
+        function armSystemWithTree() {
+            if (!navigator.geolocation) return showToast("Izinkan GPS terlebih dahulu!", "warning");
+            
+            let strictGps = document.getElementById('strictGpsToggle');
+            if (strictGps && strictGps.checked && lastGpsAccuracy > 15) {
+                showToast(`Sinyal GPS kurang akurat (${lastGpsAccuracy.toFixed(0)}m). Wajib sinyal bagus aktif (&le; 15m)!`, "error");
+                return;
+            }
+
+            isStaged = true;
+            isRacing = false;
+            currentDistance = 0;
+            
+            document.getElementById('dragStatus').innerText = "STAGED! JALAN KAPAN AJA";
+            document.getElementById('dragStatus').style.color = "#00ff66";
+            document.getElementById('lightGreen').classList.add('active');
+            document.getElementById('dragTimer').innerText = "00:00.00";
+        }
+
+        function resetDrag() {
+            isStaged = false;
+            isRacing = false;
+            document.getElementById('dragTimer').innerText = "00:00.00";
+            document.getElementById('dragSpeed').innerText = "0 km/h";
+            document.getElementById('dragDistance').innerText = "0.0 m";
+            document.getElementById('dragStatus').innerText = "STANDBY";
+            document.getElementById('dragStatus').style.color = "#ffcc00";
+            document.getElementById('lightGreen').classList.remove('active');
+        }
+
+        let wakeLock = null;
+        async function toggleWakeLock() {
+            let toggle = document.getElementById('wakeLockToggle');
+            if (toggle.checked) {
+                if ('wakeLock' in navigator) {
+                    try {
+                        wakeLock = await navigator.wakeLock.request('screen');
+                        showToast("Layar dipaksa tetap menyala aktif!", "success");
+                    } catch (err) {
+                        showToast("Gagal mengaktifkan Wake Lock: " + err.message, "error");
+                        toggle.checked = false;
+                    }
+                } else {
+                    showToast("Browser perangkat tidak mendukung Wake Lock API.", "warning");
+                    toggle.checked = false;
+                }
+            } else {
+                if (wakeLock) {
+                    await wakeLock.release();
+                    wakeLock = null;
+                    showToast("Wake Lock dinonaktifkan.", "success");
+                }
+            }
+        }
+
+        document.addEventListener('visibilitychange', async () => {
+            let toggle = document.getElementById('wakeLockToggle');
+            if (wakeLock !== null && document.visibilityState === 'visible' && toggle && toggle.checked) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                } catch (err) {}
+            }
+        });
+
+        let audioContext, analyser, microphone, rpmAnimationFrame;
+
+        async function toggleRpmMeter() {
+            let btn = document.getElementById('btnStartRpm');
+            let status = document.getElementById('rpmStatus');
+            
+            if (btn.innerText.includes("START")) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    microphone = audioContext.createMediaStreamSource(stream);
+                    
+                    analyser.fftSize = 8192; 
+                    analyser.smoothingTimeConstant = 0.8;
+                    microphone.connect(analyser);
+                    
+                    btn.innerText = "🛑 STOP MIC";
+                    btn.classList.replace('btn-stage', 'btn-reset');
+                    status.innerText = "Status Mic: LISTENING (REALTIME) 🟢";
+                    status.style.color = "#00ff66";
+                    
+                    detectRPM();
+                } catch (err) {
+                    showToast("Gagal akses Mic! Pastikan web via HTTPS dan izin diberikan.", "error");
+                }
+            } else { stopRpmMeter(); }
+        }
+
+        function detectRPM() {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            function analyze() {
+                analyser.getByteFrequencyData(dataArray);
+                let maxVal = -Infinity, maxIndex = -1;
+                for (let i = 10; i < bufferLength / 4; i++) {
+                    if (dataArray[i] > maxVal) { maxVal = dataArray[i]; maxIndex = i; }
+                }
+                
+                let freq = maxIndex * audioContext.sampleRate / analyser.fftSize;
+                let engineTypeMultiplier = parseFloat(document.getElementById('rpmEngineType').value) || 1.0;
+                let rawRpm = freq * 60 * engineTypeMultiplier;
+                
+                if (rawRpm > 800 && rawRpm < 18000 && maxVal > 100) {
+                    let displayRpm = Math.round(rawRpm);
+                    document.getElementById('rpmDisplay').innerText = displayRpm;
+                    let percentage = (displayRpm / 15000) * 100;
+                    document.getElementById('rpmBar').style.width = (percentage > 100 ? 100 : percentage) + "%";
+                }
+                rpmAnimationFrame = requestAnimationFrame(analyze);
+            }
+            analyze();
+        }
+
+        function stopRpmMeter() {
+            if (audioContext) audioContext.close();
+            cancelAnimationFrame(rpmAnimationFrame);
+            document.getElementById('btnStartRpm').innerText = "🎙️ START MIC";
+            document.getElementById('btnStartRpm').classList.replace('btn-reset', 'btn-stage');
+            document.getElementById('rpmStatus').innerText = "Status Mic: OFFLINE 🔴";
+            document.getElementById('rpmStatus').style.color = "#888";
+            document.getElementById('rpmDisplay').innerText = "0";
+            document.getElementById('rpmBar').style.width = "0%";
+        }
+
+        let dynoChartInstance = null;
+
+        function loadRunToDyno() {
+            if (raceData.speed.length < 5) return showToast("Belum ada data balap! Lakukan test run (GPS).", "warning");
+            showToast("Data test run berhasil dimuat ke Dyno!", "success");
+            runDynoAnalysis();
+        }
+
+        function runDynoAnalysis() {
+            if (raceData.speed.length < 5) return; 
+            let weight = parseFloat(document.getElementById('dynoWeight').value) || 130;
+            let cd = parseFloat(document.getElementById('dynoCd').value) || 0.60;
+            let eff = parseFloat(document.getElementById('dynoEff').value) || 0.88;
+            
+            const frontalArea = 0.6, airDensity = 1.18, rollingRes = 0.015, g = 9.81;
+            let hpData = [], torqueData = [], speedData = [];
+            let peakHP = 0, peakTorque = 0, peakSpeed = 0;
+
+            for (let i = 1; i < raceData.speed.length; i++) {
+                let v1 = raceData.speed[i-1] / 3.6, v2 = raceData.speed[i] / 3.6; 
+                let dt = raceData.time[i] - raceData.time[i-1];
+                
+                if (dt <= 0 || v2 < 2) continue; 
+                let a = (v2 - v1) / dt;
+                let vAvg = (v1 + v2) / 2;
+
+                let fAccel = weight * a;
+                let fDrag = 0.5 * airDensity * cd * frontalArea * Math.pow(vAvg, 2);
+                let fRoll = weight * g * rollingRes;
+                
+                let totalForce = Math.max(0, fAccel + fDrag + fRoll);
+                let wheelPowerW = totalForce * vAvg;
+                let wheelHP = wheelPowerW / 745.7;
+                let wheelTorque = totalForce * 0.3; 
+
+                speedData.push(Math.round(vAvg * 3.6));
+                hpData.push(wheelHP.toFixed(1));
+                torqueData.push(wheelTorque.toFixed(1));
+
+                if (wheelHP > peakHP) peakHP = wheelHP;
+                if (wheelTorque > peakTorque) {
+                    peakTorque = wheelTorque; peakSpeed = Math.round(vAvg * 3.6);
+                }
+            }
+
+            let engineHP = peakHP / eff;
+            document.getElementById('dynoPeakHP').innerHTML = `${peakHP.toFixed(1)} <span class="unit">Wheel HP</span>`;
+            document.getElementById('dynoPeakEngineHP').innerText = `Est. Engine: ${engineHP.toFixed(1)} HP`;
+            document.getElementById('dynoPeakTorque').innerHTML = `${peakTorque.toFixed(1)} <span class="unit">Nm</span>`;
+            document.getElementById('dynoPeakSpeed').innerText = `at ${peakSpeed} km/h`;
+            renderDynoChart(speedData, hpData, torqueData);
+        }
+
+        function renderDynoChart(labels = [], hp = [], torque = []) {
+            let ctx = document.getElementById('dynoChart').getContext('2d');
+            if (dynoChartInstance) dynoChartInstance.destroy();
+            dynoChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Power (HP)', data: hp, borderColor: '#00ff66', backgroundColor: 'rgba(0, 255, 102, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0 },
+                        { label: 'Torque (Nm)', data: torque, borderColor: '#ffcc00', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], tension: 0.4, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { x: { title: { display: true, text: 'Speed (km/h)', color: '#888' }, grid: { color: '#222' } }, y: { grid: { color: '#222' }, beginAtZero: true } },
+                    plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } }
+                }
+            });
+        }
+
+        function calcJetting() {
+            let da = parseFloat(document.getElementById('jettingDA').value) || 0;
+            let mj = parseFloat(document.getElementById('jettingCurrentMJ').value) || 135;
+            let pj = parseFloat(document.getElementById('jettingCurrentPJ').value) || 42;
+            let factor = 1 - (da / 10000); 
+            document.getElementById('resRecMJ').innerText = Math.round(mj * factor);
+            document.getElementById('resRecPJ').innerText = Math.round(pj * factor);
+            document.getElementById('jettingAdvice').innerText = "Rekomendasi berdasarkan densitas udara. Jika DA tinggi, udara tipis, spuyer diturunkan.";
+        }
+
+        function calcTransmission() {
+            let w = parseFloat(document.getElementById('tireWidth').value);
+            let a = parseFloat(document.getElementById('tireAspect').value);
+            let r = parseFloat(document.getElementById('tireRim').value);
+            let diameter = (r * 25.4) + (w * (a / 100) * 2);
+            let circumference = Math.PI * diameter;
+            
+            let rpm = parseFloat(document.getElementById('maxRpm').value);
+            let primary = parseFloat(document.getElementById('primaryRatio').value);
+            let front = parseFloat(document.getElementById('sprocketFront').value);
+            let rear = parseFloat(document.getElementById('sprocketRear').value);
+            let finalRatio = rear / front;
+            let gears = parseInt(document.getElementById('totalGears').value);
+            let tbody = document.getElementById('gearTableBody');
+            tbody.innerHTML = "";
+
+            for (let i = 1; i <= gears; i++) {
+                let gearRatio = parseFloat(document.getElementById('g' + i + 'Ratio').value);
+                if(!gearRatio) continue;
+                let totalRatio = primary * gearRatio * finalRatio;
+                let speed = (rpm * circumference * 60) / (totalRatio * 1000000);
+                tbody.innerHTML += `<tr><td>${i}</td><td>${gearRatio.toFixed(3)}</td><td>${totalRatio.toFixed(3)}</td><td style="color:#00ff66; font-weight:bold;">${speed.toFixed(1)} km/h</td></tr>`;
+            }
+        }
+
+        function calcCompression() {
+            let bore = parseFloat(document.getElementById('compBore').value);
+            let stroke = parseFloat(document.getElementById('compStroke').value);
+            let dome = parseFloat(document.getElementById('compDome').value);
+            let gasket = parseFloat(document.getElementById('compGasket').value);
+            let deck = parseFloat(document.getElementById('compDeck').value);
+            
+            let rBore = bore / 20, lStroke = stroke / 10; 
+            let engineCC = (Math.PI * Math.pow(rBore, 2) * lStroke);
+            let gasketVol = Math.PI * Math.pow(rBore, 2) * (gasket/10);
+            let deckVol = Math.PI * Math.pow(rBore, 2) * (deck/10);
+            
+            let combustionSpace = dome + gasketVol + deckVol;
+            let scr = (engineCC + combustionSpace) / combustionSpace;
+            
+            document.getElementById('resEngineCC').innerText = engineCC.toFixed(1) + " cc";
+            document.getElementById('resSCR').innerText = scr.toFixed(1) + " : 1";
+            document.getElementById('resFuelFuel').innerText = scr >= 11 ? "Pertamax Turbo" : "Pertamax";
+        }
+
+        function convertFileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        async function requestUpgradePro(event) {
+            if (!currentUser.isLoggedIn) return showToast("Silakan login terlebih dahulu!", "warning");
+            
+            let fileInput = document.getElementById('buktiBayarFile');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                return showToast("PILIH / UPLOAD BUKTI TRANSFER TERLEBIH DAHULU!", "warning");
+            }
+
+            let file = fileInput.files[0];
+            let idRequest = "REQ-" + Date.now();
+            let usernameVal = currentUser.email || currentUser.name || "user";
+            
+            let btn = event ? event.target : document.querySelector('button[onclick="requestUpgradePro(event)"]');
+            let originalText = btn ? btn.innerText : "";
+            if (btn) { btn.innerText = "⏳ MENGIRIM REQUEST & GAMBAR..."; btn.disabled = true; }
+
+            try {
+                let base64Proof = await convertFileToBase64(file);
+
+                let res = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: "premium",
+                        id_request: idRequest,
+                        username: usernameVal,
+                        bukti_bayar: base64Proof
+                    })
+                });
+                
+                let result = await res.json();
+                
+                if (result.status === "success") {
+                    showToast("Berhasil terkirim! Menunggu konfirmasi Admin.", "success");
+                    currentUser.requestStatus = "PENDING";
+                    localStorage.setItem('racebox_current_user', JSON.stringify(currentUser));
+                    updateAuthUI();
+                } else {
+                    showToast("Gagal mengirim request.", "error");
+                }
+            } catch (err) {
+                showToast("Gagal mengunggah bukti bayar.", "error");
+            }
+            if (btn) { btn.innerText = originalText; btn.disabled = false; }
+        }
+
+        async function loadAdminData() {
+            let container = document.getElementById('adminDataContainer');
+            container.innerHTML = "<div style='text-align:center; font-size:12px; color:#ffcc00; padding:10px;'>⏳ Menarik data antrean dari Server...</div>";
+            
+            try {
+                let res = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: "get_requests" })
+                });
+                let result = await res.json();
+                let listData = result.data || [];
+                
+                if (listData && listData.length > 0) {
+                    container.innerHTML = "";
+                    listData.forEach(req => {
+                        let proofVal = req.bukti_bayar || "";
+                        let proofHTML = "";
+
+                        if (proofVal.startsWith("http")) {
+                            proofHTML = `
+                                <div style="margin-top: 5px;">
+                                    <a href="${proofVal}" target="_blank" style="color: #00ffff; font-weight: bold; font-size: 11px; text-decoration: underline;">🔍 LIHAT BUKTI TRANSFER (GOOGLE DRIVE)</a>
+                                </div>`;
+                        } else if (proofVal.startsWith("data:image")) {
+                            proofHTML = `
+                                <div style="margin-top: 5px;">
+                                    <img src="${proofVal}" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 1px solid #00ff66; display: block;" alt="Bukti Transfer">
+                                </div>`;
+                        } else {
+                            proofHTML = `<div style="font-size: 10px; color: #ff3344; margin-top: 4px;">Note: ${proofVal || 'Tidak ada foto'}</div>`;
+                        }
+
+                        container.innerHTML += `
+                            <div class="setting-card" style="flex-direction: column; align-items: flex-start; gap: 8px; border-color: #444;">
+                                <div style="display: flex; justify-content: space-between; width: 100%;">
+                                    <span style="font-size: 12px; font-weight: bold; color: #00ffff;">${req.id_request || 'REQ-UNKNOWN'}</span>
+                                    <span style="font-size: 10px; color: #ffcc00; background: #222; padding: 2px 6px; border-radius: 4px;">PENDING</span>
+                                </div>
+                                <div style="font-size: 11px; color: #ccc;">User: <b style="color: #fff;">${req.username || 'Tidak Diketahui'}</b></div>
+                                <div style="font-size: 10px; color: #00ff66; font-weight: bold;">BUKTI PEMBAYARAN:</div>
+                                ${proofHTML}
+                                <div style="display: flex; gap: 10px; width: 100%; margin-top: 5px;">
+                                    <button class="btn btn-stage" style="flex: 1; padding: 8px 0;" onclick="processAdminRequest('${req.id_request}', '${req.username}', 'approve')">✅ APPROVE</button>
+                                    <button class="btn btn-reset" style="flex: 1; padding: 8px 0; border-color: #ff3344; color: #ff3344;" onclick="processAdminRequest('${req.id_request}', '${req.username}', 'reject')">❌ REJECT</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    container.innerHTML = "<div style='text-align:center; font-size:11px; color:#888; padding:15px;'>Tidak ada antrean request Pro dengan status PENDING di Google Sheets.</div>";
+                }
+            } catch (err) {
+                container.innerHTML = `<div style='text-align:center; font-size:11px; color:#ff3344; padding:15px;'>⚠️ Gagal memuat data. Periksa koneksi internet atau deployment GAS Anda.</div>`;
+            }
+        }
+
+        async function processAdminRequest(idReq, username, actionType) {
+            let confirmMsg = actionType === 'approve' ? `Yakin setujui user ${username} menjadi PRO?` : `Tolak request dari ${username}?`;
+            
+            showCustomConfirm(confirmMsg, async () => {
+                try {
+                    let res = await fetch(API_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: actionType,
+                            id_request: idReq,
+                            username: username
+                        })
+                    });
+                    let result = await res.json();
+                    
+                    if (result.status === "success") {
+                        showToast(`Aksi ${actionType} untuk ${username} berhasil!`, "success");
+                        loadAdminData();
+                    } else {
+                        showToast("Gagal memproses request.", "error");
+                    }
+                } catch (err) {
+                    showToast(`Gagal memproses aksi ${actionType.toUpperCase()}`, "error");
+                }
+            });
+        }
+    </script>
+</body>
+</html>
