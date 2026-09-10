@@ -711,7 +711,7 @@
                                     A/n JIDAN AUTO TOOLS
                                 </div>
                                 <div style="background: #fff; padding: 10px; border-radius: 8px; display: inline-block; margin-bottom: 10px;">
-                                    <img src="https://i.postimg.cc/cLt1VLkw/Whats-App-Image-2026-09-10-at-16-04-35.jpg' border='0' alt='Whats-App-Image-2026-09-10-at-15-26-52" style="width: 150px; height: 150px; display: block;">
+                                    <img src="https://i.postimg.cc/cLt1VLkw/Whats-App-Image-2026-09-10-at-16-04-35.jpg" border="0" alt="QR Code Transfer" style="width: 150px; height: 150px; display: block;">
                                 </div>
                                 <div style="font-size: 10px; color: #888; margin-bottom: 10px; padding: 0 10px;">
                                     Scan QR code di atas menggunakan E-Wallet atau M-Banking Anda.
@@ -786,6 +786,8 @@
             isLoggedIn: false, email: "", name: "", role: "user", isPro: false, requestStatus: "FREE", proPackage: null, paymentPending: false, expiredDate: "", pass: ""
         };
 
+        let lastWeatherFetchTime = 0;
+
         function showToast(message, type = 'success') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
@@ -838,8 +840,60 @@
                 checkAuthStatus();
             }, 2500);
 
+            initSlopeSensor();
             calcJetting(); calcTransmission(); calcCompression(); renderDynoChart();
         });
+
+        // 3. KEMIRINGAN (SLOPE) REALTIME BERDASARKAN GYROSCOPE PERANGKAT
+        function initSlopeSensor() {
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener('deviceorientation', (event) => {
+                    if (event.beta !== null && event.beta !== undefined) {
+                        let pitch = event.beta.toFixed(1);
+                        let slopeEl = document.getElementById('slopeStatus');
+                        if (slopeEl) slopeEl.innerText = `📐 ${pitch}°`;
+                    }
+                }, true);
+            }
+        }
+
+        // 3. CUACA & DA REALTIME VIA GPS & OPEN-METEO API
+        async function fetchRealtimeWeather(lat, lon, alt) {
+            try {
+                let res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,surface_pressure`);
+                let data = await res.json();
+                if (data && data.current) {
+                    let temp = data.current.temperature_2m;
+                    let humidity = data.current.relative_humidity_2m;
+                    let pressure = data.current.surface_pressure; // hPa
+                    
+                    let altMeters = alt || 0;
+                    let altFeet = altMeters * 3.28084;
+                    
+                    // Hitung Pressure Altitude & Density Altitude (DA)
+                    let pa = altFeet + (1013.25 - pressure) * 30;
+                    let isaTemp = 15 - (0.0019812 * altFeet);
+                    let daFeet = pa + (118.8 * (temp - isaTemp));
+                    let daMeters = Math.round(daFeet * 0.3048);
+                    
+                    document.getElementById('weatherTemp').innerText = `🌡️ Cuaca: ${temp}°C (${humidity}%)`;
+                    document.getElementById('weatherHint').innerText = `Tekanan: ${pressure} hPa | Alt: ${Math.round(altMeters)}m`;
+                    document.getElementById('daValue').innerText = `DA: ${daMeters} m`;
+
+                    // Update nilai otomatis ke kalkulator jetting
+                    let jettingDA = document.getElementById('jettingDA');
+                    let jettingTemp = document.getElementById('jettingTemp');
+                    if (jettingDA) jettingDA.value = daMeters;
+                    if (jettingTemp) jettingTemp.value = Math.round(temp);
+                    calcJetting();
+
+                    let slipWeather = document.getElementById('slipWeatherInfo');
+                    if (slipWeather) slipWeather.innerText = `Cuaca: ${temp}°C | DA: ${daMeters}m`;
+                }
+            } catch (e) {
+                console.log("Weather sync error:", e);
+            }
+        }
 
         function checkAuthStatus() {
             let savedUser = localStorage.getItem('racebox_current_user');
@@ -979,6 +1033,7 @@
             setTimeout(() => { window.location.reload(); }, 1000);
         }
 
+        // 1 & 2. MODIFIKASI STATUS ANTI SPAM KETAT
         function updateAuthUI() {
             let navAccount = document.getElementById('navAccount');
             let navAdminPanel = document.getElementById('navAdminPanel');
@@ -1038,12 +1093,12 @@
                     document.getElementById('proActiveSection').style.display = 'none';
 
                     if (currentUser.requestStatus === 'PENDING') {
-                        // SEMBUNYIKAN INPUT FILE SAAT PENDING AGAR TIDAK BISA DI-SPAM
+                        // Sembunyikan form upload & kunci tombol agar tidak bisa dikirim/dispam ulang
                         if (uploadProofBox) uploadProofBox.style.display = 'none';
                         upgradeActionContainer.innerHTML = `
                             <div style="background: rgba(255,204,0,0.1); border: 1px solid #ffcc00; color: #ffcc00; padding: 15px; border-radius: 8px; font-size: 12px; font-weight: bold; text-align: center; box-shadow: 0 0 15px rgba(255,204,0,0.15);">
-                                ⏳ STATUS REQUEST: PENDING<br>
-                                <span style="font-size: 10px; color: #aaa; font-weight: normal; display: block; margin-top: 5px;">Bukti pembayaran telah terkirim. Menunggu konfirmasi dari Admin.</span>
+                                ⏳ STATUS REQUEST: MENUNGGU KONFIRMASI ADMIN<br>
+                                <span style="font-size: 10px; color: #aaa; font-weight: normal; display: block; margin-top: 5px;">Bukti pembayaran telah terkirim. Mohon tunggu proses verifikasi.</span>
                             </div>`;
                     } else if (currentUser.requestStatus === 'REJECTED') {
                         if (uploadProofBox) uploadProofBox.style.display = 'block';
@@ -1163,6 +1218,13 @@
 
                 document.getElementById('dragSpeed').innerText = Math.max(0, currentSpeed).toFixed(1) + " km/h";
                 document.getElementById('dragGForce').innerText = Math.max(0, currentGForce).toFixed(2) + " G";
+
+                // Panggil sinkronisasi cuaca realtime secara bertahap setiap 3 menit
+                let nowTs = Date.now();
+                if (nowTs - lastWeatherFetchTime > 180000) {
+                    lastWeatherFetchTime = nowTs;
+                    fetchRealtimeWeather(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude);
+                }
 
                 if (isStaged && currentSpeed > 2 && !isRacing) {
                     isRacing = true;
@@ -1469,11 +1531,11 @@
             });
         }
 
+        // 1 & 2. KUNCI TOTAL DARI PENIKAM / SPAM KALAU SUDAH SEND REQUEST
         async function requestUpgradePro(event) {
             if (!currentUser.isLoggedIn) return showToast("Silakan login terlebih dahulu!", "warning");
             if (currentUser.isPro) return showToast("Akun Anda sudah berstatus PRO!", "success");
             
-            // BLOKIR JIKA STATUS MASIH PENDING
             if (currentUser.requestStatus === 'PENDING') {
                 return showToast("Request Anda sedang diproses oleh Admin. Mohon tunggu konfirmasi!", "warning");
             }
@@ -1608,7 +1670,7 @@
             });
         }
 
-        // AUTO POLLING DETEKSI PERUBAHAN STATUS PRO DARI ADMIN
+        // 2. PERBAIKAN POLLING STATUS DARI SERVER AGAR TIDA BALIK LAGI KE TAMPILAN KIRIM ULANG
         setInterval(async () => {
             let adminSection = document.getElementById('view-admin');
             if (adminSection && adminSection.classList.contains('active')) {
@@ -1631,10 +1693,19 @@
                         let userData = result.data;
                         let oldPro = currentUser.isPro;
                         let oldStatus = currentUser.requestStatus;
-                        
-                        if (userData.isPro !== oldPro || userData.requestStatus !== oldStatus) {
-                            currentUser.isPro = userData.isPro === true;
-                            currentUser.requestStatus = userData.requestStatus || "FREE";
+                        let serverStatus = userData.requestStatus;
+                        let newIsPro = userData.isPro === true;
+
+                        // Jaga status local PENDING agar tidak ter-reset ke FREE secara tidak sengaja oleh response server
+                        if (!serverStatus || serverStatus === "FREE") {
+                            if (oldStatus === "PENDING" && !newIsPro) {
+                                serverStatus = "PENDING";
+                            }
+                        }
+
+                        if (newIsPro !== oldPro || serverStatus !== oldStatus) {
+                            currentUser.isPro = newIsPro;
+                            currentUser.requestStatus = serverStatus || "FREE";
                             currentUser.expiredDate = userData.expiredDate || "";
                             localStorage.setItem('racebox_current_user', JSON.stringify(currentUser));
                             updateAuthUI();
