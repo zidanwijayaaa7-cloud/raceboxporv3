@@ -615,14 +615,18 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
                     <div>
                         <span style="font-size: 10px; color: #00ff66; font-weight: bold;">RUN A (HIJAU):</span>
-                        <select id="compareRunA" style="width: 100%; margin-top: 4px;"><option>Run 1</option></select>
+                        <select id="compareRunA" style="width: 100%; margin-top: 4px;"><option>Pilih Run</option></select>
                     </div>
                     <div>
                         <span style="font-size: 10px; color: #00ffff; font-weight: bold;">RUN B (CYAN):</span>
-                        <select id="compareRunB" style="width: 100%; margin-top: 4px;"><option>Run 2</option></select>
+                        <select id="compareRunB" style="width: 100%; margin-top: 4px;"><option>Pilih Run</option></select>
                     </div>
                 </div>
-                <button class="btn btn-action" style="width: 100%; background: #112a22; color: #00ff66;" onclick="showToast('Fitur segera hadir!', 'warning')">📊 ADU GRAFIK SEKARANG</button>
+                <button class="btn btn-action" style="width: 100%; background: #112a22; color: #00ff66;" onclick="renderCompareChart()">📊 ADU GRAFIK SEKARANG</button>
+            </div>
+            <div class="panel-box" style="margin-top: 10px;">
+                <span class="section-title">PERBANDINGAN GRAFIK KECEPATAN (RUN A vs RUN B)</span>
+                <canvas id="compareChart" style="max-height: 250px; width: 100%; margin-top: 10px;"></canvas>
             </div>
         </div>
 
@@ -669,9 +673,9 @@
                 <input type="number" id="totalWeight" value="130" style="width: 80px; text-align: center; padding: 6px;">
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-                <button class="btn btn-action" onclick="showToast('Mengekspor file CSV...', 'success')">📥 EXPORT (CSV)</button>
+                <button class="btn btn-action" onclick="exportHistoryCSV()">📥 EXPORT (CSV)</button>
                 <button class="btn btn-action" onclick="document.getElementById('importFile').click()">📤 IMPORT (CSV)</button>
-                <input type="file" id="importFile" style="display: none;" accept=".csv">
+                <input type="file" id="importFile" style="display: none;" accept=".csv" onchange="importHistoryCSV(event)">
             </div>
 
             <div class="dev-card" style="margin-top: 20px;">
@@ -687,7 +691,7 @@
                     <span>CORE: <b>jidan auto tools + GPS</b></span><span style="color: #00ff66;">VER: <b>v3.0 PRO</b></span>
                 </div>
             </div>
-            <button class="btn btn-action" style="margin-top: 20px; border-color: #ff3344; color: #ff3344; background: #1a080a; width: 100%;" onclick="showToast('Semua data logbook terhapus!', 'success')">🗑️ HAPUS SEMUA LOGBOOK</button>
+            <button class="btn btn-action" style="margin-top: 20px; border-color: #ff3344; color: #ff3344; background: #1a080a; width: 100%;" onclick="clearAllLogbook()">🗑️ HAPUS SEMUA LOGBOOK</button>
         </div>
 
         <div id="view-account" class="view-section">
@@ -717,7 +721,6 @@
                                     Scan QR code di atas menggunakan E-Wallet atau M-Banking Anda.
                                 </div>
 
-                                <!-- FILE INPUT DIBUNGKUS WIDGET SUPAYA BISA DISIMPANKAN SAAT PENDING -->
                                 <div style="text-align: left; margin-bottom: 15px;" id="uploadProofBox">
                                     <label style="color: #00ffff; font-weight: bold; margin-bottom: 6px;">📸 Upload Bukti Transfer (Gambar)</label>
                                     <input type="file" id="buktiBayarFile" accept="image/*" style="padding: 8px;">
@@ -774,7 +777,7 @@
             <div style="text-align: center; font-size: 9px; margin-top: 10px; border-top: 1px dashed #000; padding-top: 5px;">OFFICIAL GPS TELEMETRY VERIFIED</div>
         </div>
         <div style="display: flex; gap: 10px;">
-            <button class="btn btn-save" onclick="showToast('Menyimpan screenshot IG Story...', 'success')">📸 SIMPAN (IG STORY)</button>
+            <button class="btn btn-save" onclick="downloadSlip()">📸 SIMPAN (UNDUH STRUK)</button>
             <button class="btn btn-reset" onclick="closeSlipModal()">TUTUP</button>
         </div>
     </div>
@@ -786,6 +789,7 @@
             isLoggedIn: false, email: "", name: "", role: "user", isPro: false, requestStatus: "FREE", proPackage: null, paymentPending: false, expiredDate: "", pass: ""
         };
 
+        let runHistory = JSON.parse(localStorage.getItem('racebox_runs') || '[]');
         let lastWeatherFetchTime = 0;
 
         function showToast(message, type = 'success') {
@@ -842,9 +846,9 @@
 
             initSlopeSensor();
             calcJetting(); calcTransmission(); calcCompression(); renderDynoChart();
+            renderHistoryList(); updateCompareOptions();
         });
 
-        // 3. KEMIRINGAN (SLOPE) REALTIME BERDASARKAN GYROSCOPE PERANGKAT
         function initSlopeSensor() {
             if (window.DeviceOrientationEvent) {
                 window.addEventListener('deviceorientation', (event) => {
@@ -857,7 +861,6 @@
             }
         }
 
-        // 3. CUACA & DA REALTIME VIA GPS & OPEN-METEO API
         async function fetchRealtimeWeather(lat, lon, alt) {
             try {
                 let res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,surface_pressure`);
@@ -865,12 +868,11 @@
                 if (data && data.current) {
                     let temp = data.current.temperature_2m;
                     let humidity = data.current.relative_humidity_2m;
-                    let pressure = data.current.surface_pressure; // hPa
+                    let pressure = data.current.surface_pressure;
                     
                     let altMeters = alt || 0;
                     let altFeet = altMeters * 3.28084;
                     
-                    // Hitung Pressure Altitude & Density Altitude (DA)
                     let pa = altFeet + (1013.25 - pressure) * 30;
                     let isaTemp = 15 - (0.0019812 * altFeet);
                     let daFeet = pa + (118.8 * (temp - isaTemp));
@@ -880,7 +882,6 @@
                     document.getElementById('weatherHint').innerText = `Tekanan: ${pressure} hPa | Alt: ${Math.round(altMeters)}m`;
                     document.getElementById('daValue').innerText = `DA: ${daMeters} m`;
 
-                    // Update nilai otomatis ke kalkulator jetting
                     let jettingDA = document.getElementById('jettingDA');
                     let jettingTemp = document.getElementById('jettingTemp');
                     if (jettingDA) jettingDA.value = daMeters;
@@ -1033,7 +1034,6 @@
             setTimeout(() => { window.location.reload(); }, 1000);
         }
 
-        // 1 & 2. MODIFIKASI STATUS ANTI SPAM KETAT
         function updateAuthUI() {
             let navAccount = document.getElementById('navAccount');
             let navAdminPanel = document.getElementById('navAdminPanel');
@@ -1093,7 +1093,6 @@
                     document.getElementById('proActiveSection').style.display = 'none';
 
                     if (currentUser.requestStatus === 'PENDING') {
-                        // Sembunyikan form upload & kunci tombol agar tidak bisa dikirim/dispam ulang
                         if (uploadProofBox) uploadProofBox.style.display = 'none';
                         upgradeActionContainer.innerHTML = `
                             <div style="background: rgba(255,204,0,0.1); border: 1px solid #ffcc00; color: #ffcc00; padding: 15px; border-radius: 8px; font-size: 12px; font-weight: bold; text-align: center; box-shadow: 0 0 15px rgba(255,204,0,0.15);">
@@ -1122,8 +1121,45 @@
             document.getElementById("sidebarOverlay").classList.toggle("show");
         }
 
-        function openSlipModal() { document.getElementById('slipModal').classList.add('show'); }
+        function openSlipModal() { 
+            let now = new Date();
+            document.getElementById('slipDate').innerText = now.toLocaleDateString('id-ID') + " " + now.toLocaleTimeString('id-ID');
+            let specMotorEl = document.getElementById('specMotor');
+            let motor = (specMotorEl && specMotorEl.value) ? specMotorEl.value : "Motor Test";
+            document.getElementById('slipMotor').innerText = "Motor: " + motor;
+            
+            let targetDist = document.getElementById('targetDistance').value || "500";
+            document.getElementById('slipTargetLabel').innerText = targetDist + "m Time:";
+            document.getElementById('slipTargetVal').innerText = document.getElementById('resTarget').innerText || "--";
+            document.getElementById('slipTopSpeed').innerText = document.getElementById('resTopSpeed').innerText || "--";
+            document.getElementById('slipPeakG').innerText = (Math.max(0, currentGForce) || 0).toFixed(2) + " G";
+
+            document.getElementById('slipRT').innerText = document.getElementById('resRT').innerText || "--";
+            document.getElementById('slip60ft').innerText = document.getElementById('res60ft').innerText || "--";
+            document.getElementById('slip201m').innerText = document.getElementById('res201m').innerText || "--";
+            
+            let peakHPVal = document.getElementById('dynoPeakHP')?.innerText || "0.0 HP";
+            document.getElementById('slipHP').innerText = peakHPVal;
+
+            document.getElementById('slipModal').classList.add('show'); 
+        }
+
         function closeSlipModal() { document.getElementById('slipModal').classList.remove('show'); }
+
+        function downloadSlip() {
+            let slipEl = document.getElementById('slipCard');
+            if (!slipEl) return;
+            showToast("Proses mengunduh struk telemetry...", "success");
+            html2canvas(slipEl, { scale: 3, useCORS: true, backgroundColor: "#fdfae6" }).then(canvas => {
+                let a = document.createElement('a');
+                a.download = `RaceBox_Slip_${Date.now()}.png`;
+                a.href = canvas.toDataURL('image/png');
+                a.click();
+            }).catch(err => {
+                console.error(err);
+                showToast("Gagal mengunduh struk gambar!", "error");
+            });
+        }
 
         async function switchTab(tabId, el) {
             const proTabs = ['dyno', 'tools', 'compare'];
@@ -1150,6 +1186,7 @@
 
             if (tabId === 'dyno') renderDynoChart(); 
             if (tabId === 'admin') loadAdminData();
+            if (tabId === 'compare') updateCompareOptions();
         }
 
         function switchToolTab(toolId, el) {
@@ -1173,11 +1210,37 @@
         let isStaged = false;
         let isRacing = false;
         let raceData = { time: [], speed: [], distance: [] }; 
+        let stageTime = 0;
         let startTime = 0;
-        let startLat, startLon;
+        let startLat = null, startLon = null;
         let currentSpeed = 0, currentDistance = 0, currentGForce = 0;
         let lastTime = 0, lastSpeedMs = 0;
         let lastGpsAccuracy = 999;
+        let timerAnimFrame = null;
+        let recordedSplits = {};
+
+        function formatTimer(seconds) {
+            let m = Math.floor(seconds / 60);
+            let s = Math.floor(seconds % 60);
+            let ms = Math.floor((seconds % 1) * 100);
+            let mStr = m < 10 ? "0" + m : m;
+            let sStr = s < 10 ? "0" + s : s;
+            let msStr = ms < 10 ? "0" + ms : ms;
+            return `${mStr}:${sStr}.${msStr}`;
+        }
+
+        function startTimerLoop() {
+            if (timerAnimFrame) cancelAnimationFrame(timerAnimFrame);
+            function loop() {
+                if (isRacing) {
+                    let now = performance.now();
+                    let raceTime = (now - startTime) / 1000;
+                    document.getElementById('dragTimer').innerText = formatTimer(raceTime);
+                    timerAnimFrame = requestAnimationFrame(loop);
+                }
+            }
+            loop();
+        }
 
         function getDistanceFromLatLonInM(lat1, lon1, lat2, lon2) {
             var R = 6371000; 
@@ -1219,42 +1282,73 @@
                 document.getElementById('dragSpeed').innerText = Math.max(0, currentSpeed).toFixed(1) + " km/h";
                 document.getElementById('dragGForce').innerText = Math.max(0, currentGForce).toFixed(2) + " G";
 
-                // Panggil sinkronisasi cuaca realtime secara bertahap setiap 3 menit
                 let nowTs = Date.now();
                 if (nowTs - lastWeatherFetchTime > 180000) {
                     lastWeatherFetchTime = nowTs;
                     fetchRealtimeWeather(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude);
                 }
 
-                if (isStaged && currentSpeed > 2 && !isRacing) {
+                if (isStaged && currentSpeed >= 1.0 && !isRacing) {
                     isRacing = true;
                     isStaged = false;
                     startTime = performance.now();
+                    let rt = (startTime - stageTime) / 1000;
+                    document.getElementById('resRT').innerText = rt.toFixed(3) + " s";
                     startLat = pos.coords.latitude;
                     startLon = pos.coords.longitude;
                     raceData = { time: [], speed: [], distance: [] };
                     document.getElementById('dragStatus').innerText = "RACING!";
                     document.getElementById('dragStatus').style.color = "#ff3344";
+                    startTimerLoop();
                 }
 
                 if (isRacing) {
                     let raceTime = (now - startTime) / 1000;
+                    if (!startLat || !startLon) {
+                        startLat = pos.coords.latitude;
+                        startLon = pos.coords.longitude;
+                    }
                     currentDistance = getDistanceFromLatLonInM(startLat, startLon, pos.coords.latitude, pos.coords.longitude);
                     
                     document.getElementById('dragDistance').innerText = currentDistance.toFixed(1) + " m";
-                    document.getElementById('dragTimer').innerText = raceTime.toFixed(2);
                     
                     raceData.time.push(raceTime);
                     raceData.speed.push(currentSpeed);
                     raceData.distance.push(currentDistance);
 
-                    let targetDist = parseInt(document.getElementById('targetDistance').value);
+                    if (!recordedSplits['60ft'] && currentDistance >= 18.288) {
+                        recordedSplits['60ft'] = raceTime;
+                        document.getElementById('res60ft').innerText = raceTime.toFixed(2) + " s";
+                    }
+                    if (!recordedSplits['201m'] && currentDistance >= 201) {
+                        recordedSplits['201m'] = raceTime;
+                        document.getElementById('res201m').innerText = raceTime.toFixed(2) + " s";
+                    }
+                    if (!recordedSplits['402m'] && currentDistance >= 402) {
+                        recordedSplits['402m'] = raceTime;
+                        document.getElementById('res402m').innerText = raceTime.toFixed(2) + " s";
+                    }
+                    if (!recordedSplits['500m'] && currentDistance >= 500) {
+                        recordedSplits['500m'] = raceTime;
+                        document.getElementById('res500m').innerText = raceTime.toFixed(2) + " s";
+                    }
+                    if (!recordedSplits['1200m'] && currentDistance >= 1200) {
+                        recordedSplits['1200m'] = raceTime;
+                        document.getElementById('res1200m').innerText = raceTime.toFixed(2) + " s";
+                    }
+
+                    let targetDist = parseInt(document.getElementById('targetDistance').value) || 500;
                     if (currentDistance >= targetDist) {
                         isRacing = false;
+                        if (timerAnimFrame) cancelAnimationFrame(timerAnimFrame);
+                        document.getElementById('dragTimer').innerText = formatTimer(raceTime);
                         document.getElementById('dragStatus').innerText = `FINISH ${targetDist}M!`;
                         document.getElementById('dragStatus').style.color = "#00ffff";
                         document.getElementById('resTarget').innerText = raceTime.toFixed(2) + " s";
-                        document.getElementById('resTopSpeed').innerText = Math.max(...raceData.speed).toFixed(1) + " km/h";
+                        let topSpd = raceData.speed.length > 0 ? Math.max(...raceData.speed) : currentSpeed;
+                        document.getElementById('resTopSpeed').innerText = topSpd.toFixed(1) + " km/h";
+
+                        saveRunToHistory(targetDist, raceTime, topSpd);
                     }
                 }
             }, (err) => {
@@ -1275,7 +1369,19 @@
 
             isStaged = true;
             isRacing = false;
+            stageTime = performance.now();
             currentDistance = 0;
+            recordedSplits = {};
+            raceData = { time: [], speed: [], distance: [] };
+
+            document.getElementById('resRT').innerText = "-.--- s";
+            document.getElementById('res60ft').innerText = "--.-- s";
+            document.getElementById('res201m').innerText = "--.-- s";
+            document.getElementById('res402m').innerText = "--.-- s";
+            document.getElementById('res500m').innerText = "--.-- s";
+            document.getElementById('res1200m').innerText = "--.-- s";
+            document.getElementById('resTarget').innerText = "--.-- s";
+            document.getElementById('resTopSpeed').innerText = "-- km/h";
             
             document.getElementById('dragStatus').innerText = "STAGED! JALAN KAPAN AJA";
             document.getElementById('dragStatus').style.color = "#00ff66";
@@ -1286,12 +1392,218 @@
         function resetDrag() {
             isStaged = false;
             isRacing = false;
+            if (timerAnimFrame) cancelAnimationFrame(timerAnimFrame);
             document.getElementById('dragTimer').innerText = "00:00.00";
             document.getElementById('dragSpeed').innerText = "0 km/h";
             document.getElementById('dragDistance').innerText = "0.0 m";
             document.getElementById('dragStatus').innerText = "STANDBY";
             document.getElementById('dragStatus').style.color = "#ffcc00";
             document.getElementById('lightGreen').classList.remove('active');
+        }
+
+        function saveRunToHistory(targetDist, finishTime, topSpeed) {
+            let specMotor = document.getElementById('specMotor')?.value || "Motor Test";
+            let specSettings = document.getElementById('specSettings')?.value || "-";
+            let runObj = {
+                id: "Run " + (runHistory.length + 1),
+                date: new Date().toLocaleString('id-ID'),
+                motor: specMotor,
+                settings: specSettings,
+                targetDist: targetDist,
+                time: finishTime.toFixed(2),
+                topSpeed: topSpeed.toFixed(1),
+                rt: document.getElementById('resRT').innerText,
+                split60ft: document.getElementById('res60ft').innerText,
+                split201m: document.getElementById('res201m').innerText,
+                split402m: document.getElementById('res402m').innerText,
+                split500m: document.getElementById('res500m').innerText,
+                split1200m: document.getElementById('res1200m').innerText,
+                telemetry: JSON.parse(JSON.stringify(raceData))
+            };
+            runHistory.unshift(runObj);
+            localStorage.setItem('racebox_runs', JSON.stringify(runHistory));
+            renderHistoryList();
+            updateCompareOptions();
+        }
+
+        function renderHistoryList() {
+            let listEl = document.getElementById('historyList');
+            if (!listEl) return;
+            if (runHistory.length === 0) {
+                listEl.innerHTML = "<p style='font-size:11px; color:#666;'>Data belum tersedia.</p>";
+                return;
+            }
+
+            let html = "";
+            runHistory.forEach((run, idx) => {
+                html += `
+                    <div class="setting-card" style="flex-direction: column; align-items: flex-start; gap: 6px; border-color: #333;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span style="font-size: 12px; font-weight: bold; color: #00ff66;">${run.id} - ${run.motor || 'Motor'}</span>
+                            <span style="font-size: 10px; color: #888;">${run.date}</span>
+                        </div>
+                        <div style="font-size: 11px; color: #aaa;">Target: ${run.targetDist}m | Waktu: <b style="color:#00ffff;">${run.time}s</b> | Top Speed: <b style="color:#ffcc00;">${run.topSpeed} km/h</b></div>
+                        <div style="font-size: 10px; color: #777;">Setelan: ${run.settings || '-'}</div>
+                        <div style="display: flex; gap: 8px; margin-top: 5px; width: 100%;">
+                            <button class="btn btn-hud" style="flex:1;" onclick="deleteRunHistory(${idx})">🗑️ Hapus</button>
+                        </div>
+                    </div>
+                `;
+            });
+            listEl.innerHTML = html;
+        }
+
+        function deleteRunHistory(idx) {
+            showCustomConfirm("Hapus data test run ini?", () => {
+                runHistory.splice(idx, 1);
+                localStorage.setItem('racebox_runs', JSON.stringify(runHistory));
+                renderHistoryList();
+                updateCompareOptions();
+                showToast("Data run dihapus", "success");
+            });
+        }
+
+        function exportHistoryCSV() {
+            if (runHistory.length === 0) return showToast("Tidak ada data logbook untuk diexport!", "warning");
+            let csvContent = "data:text/csv;charset=utf-8,ID,Tanggal,Motor,Target(m),Waktu(s),TopSpeed(kmh),RT,60ft,201m,402m,500m,1200m\n";
+            runHistory.forEach(r => {
+                csvContent += `"${r.id}","${r.date}","${r.motor}","${r.targetDist}","${r.time}","${r.topSpeed}","${r.rt}","${r.split60ft}","${r.split201m}","${r.split402m}","${r.split500m}","${r.split1200m}"\n`;
+            });
+            let encodedUri = encodeURI(csvContent);
+            let link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `RaceBox_Logbook_${Date.now()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast("File CSV berhasil diunduh!", "success");
+        }
+
+        function importHistoryCSV(event) {
+            let file = event.target.files[0];
+            if (!file) return;
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    let lines = e.target.result.split("\n");
+                    if (lines.length <= 1) return showToast("Berkas CSV kosong!", "warning");
+                    showToast("Data CSV berhasil diimpor!", "success");
+                } catch(err) {
+                    showToast("Gagal membaca berkas CSV!", "error");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function clearAllLogbook() {
+            showCustomConfirm("Hapus semua data logbook?", () => {
+                runHistory = [];
+                localStorage.removeItem('racebox_runs');
+                renderHistoryList();
+                updateCompareOptions();
+                showToast("Semua data logbook terhapus!", "success");
+            });
+        }
+
+        let compareChartInstance = null;
+
+        function updateCompareOptions() {
+            let selectA = document.getElementById('compareRunA');
+            let selectB = document.getElementById('compareRunB');
+            if (!selectA || !selectB) return;
+
+            selectA.innerHTML = "";
+            selectB.innerHTML = "";
+
+            if (runHistory.length === 0) {
+                selectA.innerHTML = "<option value=''>Belum ada data</option>";
+                selectB.innerHTML = "<option value=''>Belum ada data</option>";
+                return;
+            }
+
+            runHistory.forEach((run, idx) => {
+                let optA = document.createElement('option');
+                optA.value = idx;
+                optA.innerText = `${run.id} (${run.motor} - ${run.time}s / ${run.topSpeed}kmh)`;
+                selectA.appendChild(optA);
+
+                let optB = document.createElement('option');
+                optB.value = idx;
+                optB.innerText = `${run.id} (${run.motor} - ${run.time}s / ${run.topSpeed}kmh)`;
+                selectB.appendChild(optB);
+            });
+
+            if (runHistory.length > 1) {
+                selectB.selectedIndex = 1;
+            }
+        }
+
+        function renderCompareChart() {
+            let selectA = document.getElementById('compareRunA');
+            let selectB = document.getElementById('compareRunB');
+            if (!selectA || !selectB || runHistory.length === 0) {
+                return showToast("Belum ada data test run untuk dibandingkan!", "warning");
+            }
+
+            let runA = runHistory[selectA.value];
+            let runB = runHistory[selectB.value];
+
+            if (!runA || !runB) return showToast("Pilih 2 data run yang valid!", "warning");
+
+            let ctx = document.getElementById('compareChart').getContext('2d');
+            if (compareChartInstance) compareChartInstance.destroy();
+
+            let timeA = (runA.telemetry && runA.telemetry.time) ? runA.telemetry.time : [];
+            let speedA = (runA.telemetry && runA.telemetry.speed) ? runA.telemetry.speed : [];
+            let timeB = (runB.telemetry && runB.telemetry.time) ? runB.telemetry.time : [];
+            let speedB = (runB.telemetry && runB.telemetry.speed) ? runB.telemetry.speed : [];
+
+            let maxLen = Math.max(timeA.length, timeB.length);
+            let labels = [];
+            for (let i = 0; i < maxLen; i++) {
+                let t = timeA[i] !== undefined ? timeA[i] : (timeB[i] !== undefined ? timeB[i] : i);
+                labels.push(t.toFixed(1) + "s");
+            }
+
+            compareChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: `${runA.id} (${runA.motor})`,
+                            data: speedA,
+                            borderColor: '#00ff66',
+                            backgroundColor: 'rgba(0, 255, 102, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 2
+                        },
+                        {
+                            label: `${runB.id} (${runB.motor})`,
+                            data: speedB,
+                            borderColor: '#00ffff',
+                            backgroundColor: 'rgba(0, 255, 255, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Waktu (Detik)', color: '#888' }, grid: { color: '#222' } },
+                        y: { title: { display: true, text: 'Kecepatan (km/h)', color: '#888' }, grid: { color: '#222' }, beginAtZero: true }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#ccc', font: { size: 10 } } }
+                    }
+                }
+            });
+
+            showToast("Grafik Perbandingan berhasil ditampilkan!", "success");
         }
 
         let wakeLock = null;
@@ -1531,7 +1843,6 @@
             });
         }
 
-        // 1 & 2. KUNCI TOTAL DARI PENIKAM / SPAM KALAU SUDAH SEND REQUEST
         async function requestUpgradePro(event) {
             if (!currentUser.isLoggedIn) return showToast("Silakan login terlebih dahulu!", "warning");
             if (currentUser.isPro) return showToast("Akun Anda sudah berstatus PRO!", "success");
@@ -1670,7 +1981,6 @@
             });
         }
 
-        // 2. PERBAIKAN POLLING STATUS DARI SERVER AGAR TIDA BALIK LAGI KE TAMPILAN KIRIM ULANG
         setInterval(async () => {
             let adminSection = document.getElementById('view-admin');
             if (adminSection && adminSection.classList.contains('active')) {
@@ -1696,7 +2006,6 @@
                         let serverStatus = userData.requestStatus;
                         let newIsPro = userData.isPro === true;
 
-                        // Jaga status local PENDING agar tidak ter-reset ke FREE secara tidak sengaja oleh response server
                         if (!serverStatus || serverStatus === "FREE") {
                             if (oldStatus === "PENDING" && !newIsPro) {
                                 serverStatus = "PENDING";
