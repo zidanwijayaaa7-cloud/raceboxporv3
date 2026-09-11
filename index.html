@@ -1187,6 +1187,7 @@
         let lastTime = 0, lastSpeedMs = 0;
         let lastGpsAccuracy = 999;
         let timerAnimFrame = null;
+        let recordedSplits = {}; 
 
         function formatTimer(seconds) {
             let m = Math.floor(seconds / 60);
@@ -1257,6 +1258,21 @@
                     fetchRealtimeWeather(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude);
                 }
 
+                // Trigger timer mulai berjalan ketika mencapai kecepatan >= 1.2 km/h
+                if (isStaged && currentSpeed >= 1.2 && !isRacing) {
+                    isRacing = true;
+                    isStaged = false;
+                    startTime = performance.now();
+                    startLat = pos.coords.latitude;
+                    startLon = pos.coords.longitude;
+                    raceData = { time: [], speed: [], distance: [] };
+                    
+                    document.getElementById('dragStatus').innerText = "RACING!";
+                    document.getElementById('dragStatus').style.color = "#ff3344";
+                    
+                    startTimerLoop();
+                }
+
                 if (isRacing) {
                     let raceTime = (now - startTime) / 1000;
                     if (!startLat || !startLon) {
@@ -1270,6 +1286,28 @@
                     raceData.time.push(raceTime);
                     raceData.speed.push(currentSpeed);
                     raceData.distance.push(currentDistance);
+
+                    // Perekaman data split waktu otomatis (60ft, 201m, dll) agar fitur berjalan optimal
+                    if (!recordedSplits['60ft'] && currentDistance >= 18.288) {
+                        recordedSplits['60ft'] = raceTime;
+                        document.getElementById('res60ft').innerText = raceTime.toFixed(2) + " s";
+                    }
+                    if (!recordedSplits['201m'] && currentDistance >= 201) {
+                        recordedSplits['201m'] = raceTime;
+                        document.getElementById('res201m').innerText = raceTime.toFixed(2) + " s";
+                    }
+                    if (!recordedSplits['402m'] && currentDistance >= 402) {
+                        recordedSplits['402m'] = raceTime;
+                        document.getElementById('res402m').innerText = raceTime.toFixed(2) + " s";
+                    }
+                    if (!recordedSplits['500m'] && currentDistance >= 500) {
+                        recordedSplits['500m'] = raceTime;
+                        document.getElementById('res500m').innerText = raceTime.toFixed(2) + " s";
+                    }
+                    if (!recordedSplits['1200m'] && currentDistance >= 1200) {
+                        recordedSplits['1200m'] = raceTime;
+                        document.getElementById('res1200m').innerText = raceTime.toFixed(2) + " s";
+                    }
 
                     let targetDist = parseInt(document.getElementById('targetDistance').value) || 500;
                     if (currentDistance >= targetDist) {
@@ -1299,31 +1337,54 @@
                 return;
             }
 
-            isStaged = false;
-            isRacing = true;
-            startTime = performance.now();
+            // PERUBAHAN: Menyalakan status "Staged" (Menunggu pergerakan), bukan langsung "Racing"
+            isStaged = true;
+            isRacing = false;
+            startTime = 0;
             startLat = null;
             startLon = null;
             currentDistance = 0;
+            recordedSplits = {}; // Reset data rekaman split
             raceData = { time: [], speed: [], distance: [] };
             
-            document.getElementById('dragStatus').innerText = "RACING!";
-            document.getElementById('dragStatus').style.color = "#ff3344";
+            // Mengosongkan data dari tampilan layar agar bersih sebelum start
+            document.getElementById('resRT').innerText = "-.--- s";
+            document.getElementById('res60ft').innerText = "--.-- s";
+            document.getElementById('res201m').innerText = "--.-- s";
+            document.getElementById('res402m').innerText = "--.-- s";
+            document.getElementById('res500m').innerText = "--.-- s";
+            document.getElementById('res1200m').innerText = "--.-- s";
+            document.getElementById('resTarget').innerText = "--.-- s";
+            document.getElementById('resTopSpeed').innerText = "-- km/h";
+            document.getElementById('dragTimer').innerText = "00:00.00";
+
+            document.getElementById('dragStatus').innerText = "STAGED! GAS KAPAN AJA";
+            document.getElementById('dragStatus').style.color = "#00ff66";
             document.getElementById('lightGreen').classList.add('active');
-            
-            startTimerLoop();
         }
 
         function resetDrag() {
             isStaged = false;
             isRacing = false;
+            recordedSplits = {};
             if (timerAnimFrame) cancelAnimationFrame(timerAnimFrame);
+            
             document.getElementById('dragTimer').innerText = "00:00.00";
             document.getElementById('dragSpeed').innerText = "0 km/h";
             document.getElementById('dragDistance').innerText = "0.0 m";
             document.getElementById('dragStatus').innerText = "STANDBY";
             document.getElementById('dragStatus').style.color = "#ffcc00";
             document.getElementById('lightGreen').classList.remove('active');
+            
+            // Bersihkan data lama jika direset manual
+            document.getElementById('resRT').innerText = "-.--- s";
+            document.getElementById('res60ft').innerText = "--.-- s";
+            document.getElementById('res201m').innerText = "--.-- s";
+            document.getElementById('res402m').innerText = "--.-- s";
+            document.getElementById('res500m').innerText = "--.-- s";
+            document.getElementById('res1200m').innerText = "--.-- s";
+            document.getElementById('resTarget').innerText = "--.-- s";
+            document.getElementById('resTopSpeed').innerText = "-- km/h";
         }
 
         let wakeLock = null;
